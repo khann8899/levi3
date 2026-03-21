@@ -84,8 +84,12 @@ async function checkPosition(mint, pos, positions, settings, solPrice, isPaper, 
   const dropFromEntry = ((pos.entryPrice - currentPrice) / pos.entryPrice) * 100;
 
   // Multiple Take Profits
-  const takeProfits = settings.takeProfits || [{ percent: settings.takeProfitPercent || 55, sellPercent: 100 }];
+  const takeProfits = (settings.takeProfits && settings.takeProfits.length > 0)
+    ? settings.takeProfits
+    : [{ percent: settings.takeProfitPercent || 55, sellPercent: 100 }];
   const tpIndex = pos.tpIndex || 0;
+
+  console.log(`📊 ${pos.symbol}: ${(multiplier*100-100).toFixed(1)}% | TP${tpIndex+1} at ${takeProfits[tpIndex]?.percent}% | Peak: ${((pos.peakPrice/pos.entryPrice-1)*100).toFixed(1)}%`);
 
   if (tpIndex < takeProfits.length) {
     const nextTP = takeProfits[tpIndex];

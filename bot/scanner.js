@@ -32,18 +32,20 @@ function connectPumpWebSocket() {
             mintAddress: msg.mint,
             symbol: msg.symbol || msg.name?.slice(0, 10) || 'UNKNOWN',
             name: msg.name || 'Unknown',
-            priceUSD: msg.initialBuy ? (msg.solAmount / msg.tokenAmount) : 0,
-            liquidityUSD: msg.vSolInBondingCurve ? msg.vSolInBondingCurve * 150 : 0,
+            priceUSD: 0,
+            liquidityUSD: 0,
             volumeH1: 0,
             priceChangeH1: 0,
             txnsH1: 0,
             buysH1: 1,
             sellsH1: 0,
             ageMinutes: 0,
+            launchTime: Date.now(),
             url: `https://pump.fun/${msg.mint}`,
             dexId: 'pump',
             isNewLaunch: true,
           };
+          // Keep in queue for up to 30 minutes, retry every scan cycle
           newCoinQueue.push(coin);
           console.log(`🆕 New launch: ${coin.symbol} (${coin.mintAddress.slice(0, 8)}...)`);
         }
@@ -115,17 +117,27 @@ async function fetchDexScreenerCoins(maxAgeMins) {
 async function fetchNewTokens(maxAgeMins) {
   const coins = [];
   const seen = new Set();
+  const now = Date.now();
 
-  // Get coins from WebSocket queue (truly fresh)
-  const wsCoins = newCoinQueue.splice(0, newCoinQueue.length);
-  for (const coin of wsCoins) {
-    if (!seen.has(coin.mintAddress)) {
+  // Update age of WS coins and remove expired ones
+  newCoinQueue = newCoinQueue.filter(coin => {
+    const ageMs = now - coin.launchTime;
+    coin.ageMinutes = ageMs / 1000 / 60;
+    return coin.ageMinutes <= maxAgeMins; // Remove coins older than maxAgeMins
+  });
+
+  // Get ready WS coins (at least 2 mins old so DexScreener has data)
+  for (const coin of newCoinQueue) {
+    if (coin.ageMinutes >= 2 && !seen.has(coin.mintAddress)) {
       seen.add(coin.mintAddress);
-      coins.push(coin);
+      coins.push({ ...coin });
     }
   }
 
-  // Always also check DexScreener for coins with confirmed liquidity
+  // Remove processed coins from queue
+  newCoinQueue = newCoinQueue.filter(c => !seen.has(c.mintAddress) || c.ageMinutes < 2);
+
+  // Also check DexScreener for coins with confirmed liquidity
   const dexCoins = await fetchDexScreenerCoins(maxAgeMins);
   for (const coin of dexCoins) {
     if (!seen.has(coin.mintAddress)) {
@@ -135,7 +147,7 @@ async function fetchNewTokens(maxAgeMins) {
   }
 
   if (coins.length > 0) {
-    console.log(`🔎 ${coins.length} coins to check (${wsCoins.length} from WS, ${dexCoins.length} from DEX)`);
+    console.log(`🔎 ${coins.length} coins to check (${wsConnected ? '🔌 WS connected' : '⚠️ WS offline'})`);
   }
 
   return coins;
@@ -199,6 +211,12 @@ async function analyzeCoin(coin, settings, connection) {
   let tokenData = { ...coin };
 
   // For brand new WS coins or coins with missing data, fetch from DexScreener
+  // Wait at least 2 minutes for new launches to appear on DexScreener
+  if (coin.isNewLaunch && tokenData.ageMinutes < 2) {
+    console.log(`⏳ ${tokenData.symbol}: too new (${tokenData.ageMinutes.toFixed(1)}m), waiting...`);
+    return { passes: false, reason: 'Too new, waiting for liquidity' };
+  }
+
   if (tokenData.liquidityUSD === 0 || tokenData.symbol === 'UNKNOWN' || coin.isNewLaunch) {
     try {
       const response = await axios.get(
