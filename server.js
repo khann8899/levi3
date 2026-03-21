@@ -94,7 +94,17 @@ app.get('/api/status', authMiddleware, async (req, res) => {
     const settings = getSettings();
     const positions = getPositions();
     const solPrice = await getStableSOLPrice();
-    const solBalance = await getWalletBalance().catch(() => 0);
+
+    let solBalance = 0;
+    try {
+      const { getWallet, getConnection } = require('./bot/trader');
+      const wallet = getWallet();
+      const connection = getConnection();
+      if (wallet && connection) {
+        const lamports = await connection.getBalance(wallet.publicKey);
+        solBalance = lamports / 1e9;
+      }
+    } catch {}
 
     res.json({
       botActive: bot.isActive(),

@@ -2,7 +2,7 @@
 const axios = require('axios');
 
 const SCAN_URLS = [
-  'https://api.dexscreener.com/token-profiles/latest/v1',  // Latest token profiles - most fresh
+  'https://api.dexscreener.com/token-boosts/latest/v1',    // Boosted/trending new tokens
   'https://api.dexscreener.com/latest/dex/search?q=pumpswap&chainIds=solana',
   'https://api.dexscreener.com/latest/dex/search?q=pump.fun&chainIds=solana',
 ];
@@ -28,7 +28,7 @@ async function fetchNewTokens(maxAgeMins) {
 
   const url = SCAN_URLS[urlIndex % SCAN_URLS.length];
   urlIndex++;
-  const isProfileEndpoint = url.includes('token-profiles');
+  const isProfileEndpoint = url.includes('token-profiles') || url.includes('token-boosts');
 
   try {
     const response = await axios.get(url, {
@@ -232,12 +232,12 @@ async function analyzeCoin(coin, settings, connection) {
   score = Math.max(1, Math.min(10, score));
 
   return {
-    passes: score >= 4 && !honeypot.isHoneypot,
+    passes: score >= 8 && !honeypot.isHoneypot,
     score,
     hasMintAuth,
     honeypot,
-    coin: tokenData, // return enriched coin data
-    reason: score < 4 ? `Low score: ${score}/10` : 'Passed',
+    coin: tokenData,
+    reason: score < 8 ? `Low score: ${score}/10` : 'Passed',
   };
 }
 
