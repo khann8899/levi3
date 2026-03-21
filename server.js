@@ -13,23 +13,46 @@ const { getSettings, saveSettings, getPositions, getHistory, getBalanceHistory }
 const { getSOLBalance, getSOLPrice } = require('./bot/scanner');
 const { getSOLBalance: getWalletBalance } = require('./bot/trader');
 
-// Stable SOL price cache
-let cachedSOLPrice = 150;
+// Stable SOL price - multiple sources, cached 2 minutes
+let cachedSOLPrice = null;
 let lastSOLFetch = 0;
+
 async function getStableSOLPrice() {
   const now = Date.now();
-  if (now - lastSOLFetch > 60000) {
+  if (cachedSOLPrice && now - lastSOLFetch < 120000) return cachedSOLPrice;
+
+  const sources = [
+    async () => {
+      const r = await require('axios').get('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd', { timeout: 5000 });
+      return r.data?.solana?.usd;
+    },
+    async () => {
+      const r = await require('axios').get('https://price.jup.ag/v4/price?ids=SOL', { timeout: 5000 });
+      return r.data?.data?.SOL?.price;
+    },
+    async () => {
+      const r = await require('axios').get('https://api.dexscreener.com/latest/dex/pairs/solana/So11111111111111111111111111111111111111112', { timeout: 5000 });
+      return parseFloat(r.data?.pairs?.[0]?.priceUsd);
+    },
+  ];
+
+  for (const source of sources) {
     try {
-      const { getSOLPrice } = require('./bot/scanner');
-      const price = await getSOLPrice();
+      const price = await source();
       if (price && price > 10 && price < 10000) {
         cachedSOLPrice = price;
         lastSOLFetch = now;
+        return price;
       }
     } catch {}
   }
-  return cachedSOLPrice;
+
+  return cachedSOLPrice || 150;
 }
+
+// Pre-fetch price on startup
+getStableSOLPrice().catch(() => {});
+setInterval(() => getStableSOLPrice().catch(() => {}), 120000);
 
 const app = express();
 const server = http.createServer(app);
@@ -160,7 +183,6 @@ app.post('/api/paper/reset', authMiddleware, (req, res) => {
 const clients = new Set();
 
 wss.on('connection', (ws, req) => {
-  // Verify token on connection
   const url = new URL(req.url, 'http://localhost');
   const token = url.searchParams.get('token');
   try {
@@ -171,11 +193,20 @@ wss.on('connection', (ws, req) => {
   }
 
   clients.add(ws);
-  console.log(`👤 Client connected (${clients.size} total)`);
 
+  // Keepalive ping every 30 seconds
+  const pingInterval = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) ws.ping();
+  }, 30000);
+
+  ws.on('pong', () => {}); // keep alive
   ws.on('close', () => {
     clients.delete(ws);
-    console.log(`👤 Client disconnected (${clients.size} total)`);
+    clearInterval(pingInterval);
+  });
+  ws.on('error', () => {
+    clients.delete(ws);
+    clearInterval(pingInterval);
   });
 });
 
