@@ -1,11 +1,10 @@
-// Levi 3 - Token Scanner
+// Levi 3 - Token Scanner using PumpPortal WebSocket for fresh coins
 const axios = require('axios');
+const WebSocket = require('ws');
 
-const SCAN_URLS = [
-  'https://api.dexscreener.com/token-boosts/latest/v1',    // Boosted/trending new tokens
-  'https://api.dexscreener.com/latest/dex/search?q=pumpswap&chainIds=solana',
-  'https://api.dexscreener.com/latest/dex/search?q=pump.fun&chainIds=solana',
-];
+let newCoinQueue = [];
+let wsConnected = false;
+let pumpWs = null;
 
 const SKIP_MINTS = new Set([
   'So11111111111111111111111111111111111111112',
@@ -13,78 +12,85 @@ const SKIP_MINTS = new Set([
   'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
 ]);
 
-const SKIP_SYMBOLS = new Set(['SOL', 'WSOL', 'USDC', 'USDT', 'WETH', 'BTC']);
-
-let seenTokens = new Set();
-let lastReset = Date.now();
-let urlIndex = 0;
-
-async function fetchNewTokens(maxAgeMins) {
-  if (Date.now() - lastReset > 30 * 60 * 1000) {
-    seenTokens = new Set();
-    lastReset = Date.now();
-    console.log('🔄 Reset seen tokens');
-  }
-
-  const url = SCAN_URLS[urlIndex % SCAN_URLS.length];
-  urlIndex++;
-  const isProfileEndpoint = url.includes('token-profiles') || url.includes('token-boosts');
-
+// Connect to PumpPortal WebSocket for real-time new coin launches
+function connectPumpWebSocket() {
   try {
-    const response = await axios.get(url, {
-      timeout: 10000,
-      headers: { 'User-Agent': 'Mozilla/5.0' }
+    pumpWs = new WebSocket('wss://pumpportal.fun/api/data');
+
+    pumpWs.on('open', () => {
+      wsConnected = true;
+      console.log('🔌 Connected to PumpPortal WebSocket');
+      // Subscribe to new token events
+      pumpWs.send(JSON.stringify({ method: 'subscribeNewToken' }));
     });
 
-    const newCoins = [];
-    const now = Date.now();
+    pumpWs.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.mint && msg.name) {
+          const coin = {
+            mintAddress: msg.mint,
+            symbol: msg.symbol || msg.name?.slice(0, 10) || 'UNKNOWN',
+            name: msg.name || 'Unknown',
+            priceUSD: msg.initialBuy ? (msg.solAmount / msg.tokenAmount) : 0,
+            liquidityUSD: msg.vSolInBondingCurve ? msg.vSolInBondingCurve * 150 : 0,
+            volumeH1: 0,
+            priceChangeH1: 0,
+            txnsH1: 0,
+            buysH1: 1,
+            sellsH1: 0,
+            ageMinutes: 0,
+            url: `https://pump.fun/${msg.mint}`,
+            dexId: 'pump',
+            isNewLaunch: true,
+          };
+          newCoinQueue.push(coin);
+          console.log(`🆕 New launch: ${coin.symbol} (${coin.mintAddress.slice(0, 8)}...)`);
+        }
+      } catch {}
+    });
 
-    if (isProfileEndpoint) {
-      // token-profiles returns array of {chainId, tokenAddress, ...}
-      const profiles = response.data || [];
-      const solanaProfiles = profiles.filter(p => p.chainId === 'solana');
+    pumpWs.on('close', () => {
+      wsConnected = false;
+      console.log('🔌 PumpPortal WS disconnected, reconnecting in 5s...');
+      setTimeout(connectPumpWebSocket, 5000);
+    });
 
-      for (const profile of solanaProfiles) {
-        const mint = profile.tokenAddress;
-        if (!mint || SKIP_MINTS.has(mint)) continue;
-        if (seenTokens.has(mint)) continue;
-        seenTokens.add(mint);
+    pumpWs.on('error', () => {
+      wsConnected = false;
+      pumpWs.close();
+    });
 
-        // Add to list — liquidity will be fetched in analyzeCoin
-        newCoins.push({
-          mintAddress: mint,
-          symbol: profile.symbol || 'UNKNOWN',
-          name: profile.name || 'Unknown',
-          priceUSD: 0,
-          liquidityUSD: 0, // Will be fetched
-          volumeH1: 0,
-          priceChangeH1: 0,
-          txnsH1: 0,
-          buysH1: 0,
-          sellsH1: 0,
-          ageMinutes: 0, // Will be set after enrichment
-          url: profile.url || `https://dexscreener.com/solana/${mint}`,
-          dexId: '',
-        });
-      }
-      console.log(`📡 [profiles] ${profiles.length} total → ${newCoins.length} new Solana tokens`);
+  } catch (e) {
+    console.error('PumpPortal WS error:', e.message);
+    setTimeout(connectPumpWebSocket, 10000);
+  }
+}
 
-    } else {
-      // Search endpoint returns {pairs: [...]}
+// Fallback: DexScreener search for recent coins
+async function fetchDexScreenerCoins(maxAgeMins) {
+  const urls = [
+    'https://api.dexscreener.com/latest/dex/search?q=pumpswap&chainIds=solana',
+    'https://api.dexscreener.com/latest/dex/search?q=pump.fun&chainIds=solana',
+  ];
+
+  const coins = [];
+  const now = Date.now();
+  const seen = new Set();
+
+  for (const url of urls) {
+    try {
+      const response = await axios.get(url, { timeout: 8000, headers: { 'User-Agent': 'Mozilla/5.0' } });
       const pairs = response.data?.pairs || [];
       pairs.sort((a, b) => b.pairCreatedAt - a.pairCreatedAt);
 
       for (const pair of pairs) {
         const mint = pair.baseToken?.address;
-        if (!mint || SKIP_MINTS.has(mint)) continue;
-        if (SKIP_SYMBOLS.has(pair.baseToken?.symbol)) continue;
-        if (seenTokens.has(mint)) continue;
-
-        const ageMinutes = (now - pair.pairCreatedAt) / 1000 / 60;
-        if (ageMinutes < 0 || ageMinutes > maxAgeMins) continue;
-
-        seenTokens.add(mint);
-        newCoins.push({
+        if (!mint || SKIP_MINTS.has(mint) || seen.has(mint)) continue;
+        const age = (now - pair.pairCreatedAt) / 1000 / 60;
+        if (age < 0 || age > maxAgeMins) continue;
+        seen.add(mint);
+        coins.push({
           mintAddress: mint,
           symbol: pair.baseToken.symbol || 'UNKNOWN',
           name: pair.baseToken.name || 'Unknown',
@@ -95,26 +101,44 @@ async function fetchNewTokens(maxAgeMins) {
           txnsH1: (pair.txns?.h1?.buys || 0) + (pair.txns?.h1?.sells || 0),
           buysH1: pair.txns?.h1?.buys || 0,
           sellsH1: pair.txns?.h1?.sells || 0,
-          ageMinutes,
+          ageMinutes: age,
           url: pair.url || `https://dexscreener.com/solana/${mint}`,
           dexId: pair.dexId || '',
         });
       }
-
-      const query = url.split('q=')[1]?.split('&')[0] || '';
-      console.log(`📡 [${query}] ${pairs.length} pairs → ${newCoins.length} new (under ${maxAgeMins}m)`);
-    }
-
-    if (newCoins.length > 0) {
-      console.log(`🔍 New coins: ${newCoins.map(c => c.symbol + '($' + Math.round(c.liquidityUSD) + ')').join(', ')}`);
-    }
-
-    return newCoins;
-
-  } catch (e) {
-    console.error(`Scanner error: ${e.message}`);
-    return [];
+    } catch {}
   }
+  return coins;
+}
+
+// Main fetch function - combines WebSocket queue + DexScreener fallback
+async function fetchNewTokens(maxAgeMins) {
+  const coins = [];
+  const seen = new Set();
+
+  // Get coins from WebSocket queue (truly fresh)
+  const wsCoins = newCoinQueue.splice(0, newCoinQueue.length);
+  for (const coin of wsCoins) {
+    if (!seen.has(coin.mintAddress)) {
+      seen.add(coin.mintAddress);
+      coins.push(coin);
+    }
+  }
+
+  // Always also check DexScreener for coins with confirmed liquidity
+  const dexCoins = await fetchDexScreenerCoins(maxAgeMins);
+  for (const coin of dexCoins) {
+    if (!seen.has(coin.mintAddress)) {
+      seen.add(coin.mintAddress);
+      coins.push(coin);
+    }
+  }
+
+  if (coins.length > 0) {
+    console.log(`🔎 ${coins.length} coins to check (${wsCoins.length} from WS, ${dexCoins.length} from DEX)`);
+  }
+
+  return coins;
 }
 
 async function checkHoneypot(mintAddress) {
@@ -174,8 +198,8 @@ async function getSOLPrice() {
 async function analyzeCoin(coin, settings, connection) {
   let tokenData = { ...coin };
 
-  // If liquidity is 0 OR symbol is unknown, fetch fresh data from DexScreener token endpoint
-  if (tokenData.liquidityUSD === 0 || tokenData.symbol === 'UNKNOWN') {
+  // For brand new WS coins or coins with missing data, fetch from DexScreener
+  if (tokenData.liquidityUSD === 0 || tokenData.symbol === 'UNKNOWN' || coin.isNewLaunch) {
     try {
       const response = await axios.get(
         `https://api.dexscreener.com/latest/dex/tokens/${coin.mintAddress}`,
@@ -193,34 +217,33 @@ async function analyzeCoin(coin, settings, connection) {
         tokenData.buysH1 = best.txns?.h1?.buys || 0;
         tokenData.sellsH1 = best.txns?.h1?.sells || 0;
         tokenData.url = best.url || tokenData.url;
-        // Set age from pair creation time
         if (best.pairCreatedAt) {
           tokenData.ageMinutes = (Date.now() - best.pairCreatedAt) / 1000 / 60;
         }
-        console.log(`📊 Enriched ${tokenData.symbol}: liq=$${Math.round(tokenData.liquidityUSD)} age=${Math.round(tokenData.ageMinutes)}m`);
+        console.log(`📊 ${tokenData.symbol}: liq=$${Math.round(tokenData.liquidityUSD)} age=${Math.round(tokenData.ageMinutes)}m`);
       }
     } catch {}
   }
 
-  // Apply age filter after enrichment (important for profile endpoint coins)
+  // Age filter
   if (tokenData.ageMinutes > settings.maxAgeMins) {
     return { passes: false, reason: `Too old: ${Math.round(tokenData.ageMinutes)}m` };
   }
 
-  // Basic liquidity check
+  // Liquidity filter
   if (tokenData.liquidityUSD < settings.minLiquidity) {
-    return { passes: false, reason: `Low liquidity: $${Math.round(tokenData.liquidityUSD)}` };
+    return { passes: false, reason: `Low liq: $${Math.round(tokenData.liquidityUSD)}` };
   }
 
   // Honeypot check
   const honeypot = await checkHoneypot(coin.mintAddress).catch(() => ({ isHoneypot: false, sellTax: 0 }));
-  if (honeypot.isHoneypot) return { passes: false, reason: 'Honeypot detected' };
-  if (honeypot.sellTax > 10) return { passes: false, reason: `High sell tax: ${honeypot.sellTax}%` };
+  if (honeypot.isHoneypot) return { passes: false, reason: 'Honeypot' };
+  if (honeypot.sellTax > 10) return { passes: false, reason: `Sell tax: ${honeypot.sellTax}%` };
 
   // Mint authority check
   const hasMintAuth = connection ? await checkMintAuthority(coin.mintAddress, connection).catch(() => false) : false;
 
-  // Score the coin using enriched tokenData
+  // Score
   let score = 5;
   if (tokenData.liquidityUSD > 50000) score += 2;
   else if (tokenData.liquidityUSD > 20000) score += 1;
@@ -231,14 +254,19 @@ async function analyzeCoin(coin, settings, connection) {
   if (tokenData.priceChangeH1 > 30) score += 1;
   score = Math.max(1, Math.min(10, score));
 
+  console.log(`📈 ${tokenData.symbol} score: ${score}/10 | passes: ${score >= 8}`);
+
   return {
     passes: score >= 8 && !honeypot.isHoneypot,
     score,
     hasMintAuth,
     honeypot,
     coin: tokenData,
-    reason: score < 8 ? `Low score: ${score}/10` : 'Passed',
+    reason: score < 8 ? `Score: ${score}/10` : 'Passed',
   };
 }
+
+// Start WebSocket on module load
+connectPumpWebSocket();
 
 module.exports = { fetchNewTokens, analyzeCoin, getTokenPrice, getSOLPrice };
