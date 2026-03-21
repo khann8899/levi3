@@ -71,6 +71,7 @@ async function fetchNewTokens(maxAgeMins) {
         ageMinutes,
         url: pair.url || `https://dexscreener.com/solana/${mint}`,
         dexId: pair.dexId || '',
+        pairAddress: pair.pairAddress || '',
       });
     }
 
@@ -139,9 +140,33 @@ async function getSOLPrice() {
 }
 
 async function analyzeCoin(coin, settings, connection) {
+  let tokenData = { ...coin };
+
+  // If liquidity is 0, fetch fresh data from DexScreener token endpoint
+  if (tokenData.liquidityUSD === 0) {
+    try {
+      const response = await axios.get(
+        `https://api.dexscreener.com/latest/dex/tokens/${coin.mintAddress}`,
+        { timeout: 8000 }
+      );
+      const pairs = response.data?.pairs?.filter(p => p.chainId === 'solana');
+      if (pairs?.length > 0) {
+        const best = pairs.sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0))[0];
+        tokenData.liquidityUSD = best.liquidity?.usd || 0;
+        tokenData.priceUSD = parseFloat(best.priceUsd) || tokenData.priceUSD;
+        tokenData.volumeH1 = best.volume?.h1 || 0;
+        tokenData.txnsH1 = (best.txns?.h1?.buys || 0) + (best.txns?.h1?.sells || 0);
+        tokenData.buysH1 = best.txns?.h1?.buys || 0;
+        tokenData.sellsH1 = best.txns?.h1?.sells || 0;
+        tokenData.url = best.url || tokenData.url;
+        console.log(`📊 Enriched ${coin.symbol}: liq=$${Math.round(tokenData.liquidityUSD)}`);
+      }
+    } catch {}
+  }
+
   // Basic liquidity check
-  if (coin.liquidityUSD < settings.minLiquidity) {
-    return { passes: false, reason: `Low liquidity: $${Math.round(coin.liquidityUSD)}` };
+  if (tokenData.liquidityUSD < settings.minLiquidity) {
+    return { passes: false, reason: `Low liquidity: $${Math.round(tokenData.liquidityUSD)}` };
   }
 
   // Honeypot check
@@ -152,15 +177,15 @@ async function analyzeCoin(coin, settings, connection) {
   // Mint authority check
   const hasMintAuth = connection ? await checkMintAuthority(coin.mintAddress, connection).catch(() => false) : false;
 
-  // Score the coin
+  // Score the coin using enriched tokenData
   let score = 5;
-  if (coin.liquidityUSD > 50000) score += 2;
-  else if (coin.liquidityUSD > 20000) score += 1;
-  if (coin.volumeH1 > 20000) score += 1;
-  if (coin.txnsH1 > 100) score += 1;
-  if (coin.buysH1 > coin.sellsH1) score += 1;
+  if (tokenData.liquidityUSD > 50000) score += 2;
+  else if (tokenData.liquidityUSD > 20000) score += 1;
+  if (tokenData.volumeH1 > 20000) score += 1;
+  if (tokenData.txnsH1 > 100) score += 1;
+  if (tokenData.buysH1 > tokenData.sellsH1) score += 1;
   if (hasMintAuth) score -= 2;
-  if (coin.priceChangeH1 > 30) score += 1;
+  if (tokenData.priceChangeH1 > 30) score += 1;
   score = Math.max(1, Math.min(10, score));
 
   return {
@@ -168,6 +193,7 @@ async function analyzeCoin(coin, settings, connection) {
     score,
     hasMintAuth,
     honeypot,
+    coin: tokenData, // return enriched coin data
     reason: score < 4 ? `Low score: ${score}/10` : 'Passed',
   };
 }

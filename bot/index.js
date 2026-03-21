@@ -30,7 +30,8 @@ async function scanAndTrade() {
       if (realEnabled) {
         const analysis = await analyzeCoin(coin, settings.real, connection);
         if (analysis.passes) {
-          await openPosition(coin, analysis, false, solPrice);
+          const enrichedCoin = analysis.coin || coin;
+          await openPosition(enrichedCoin, analysis, false, solPrice);
         }
       }
 
@@ -38,7 +39,8 @@ async function scanAndTrade() {
       if (paperEnabled) {
         const analysis = await analyzeCoin(coin, settings.paper, connection);
         if (analysis.passes) {
-          await openPosition(coin, analysis, true, solPrice);
+          const enrichedCoin = analysis.coin || coin;
+          await openPosition(enrichedCoin, analysis, true, solPrice);
         }
       }
 
