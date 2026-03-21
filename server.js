@@ -13,6 +13,24 @@ const { getSettings, saveSettings, getPositions, getHistory, getBalanceHistory }
 const { getSOLBalance, getSOLPrice } = require('./bot/scanner');
 const { getSOLBalance: getWalletBalance } = require('./bot/trader');
 
+// Stable SOL price cache
+let cachedSOLPrice = 150;
+let lastSOLFetch = 0;
+async function getStableSOLPrice() {
+  const now = Date.now();
+  if (now - lastSOLFetch > 60000) {
+    try {
+      const { getSOLPrice } = require('./bot/scanner');
+      const price = await getSOLPrice();
+      if (price && price > 10 && price < 10000) {
+        cachedSOLPrice = price;
+        lastSOLFetch = now;
+      }
+    } catch {}
+  }
+  return cachedSOLPrice;
+}
+
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -52,7 +70,7 @@ app.get('/api/status', authMiddleware, async (req, res) => {
   try {
     const settings = getSettings();
     const positions = getPositions();
-    const solPrice = await getSOLPrice();
+    const solPrice = await getStableSOLPrice();
     const solBalance = await getWalletBalance().catch(() => 0);
 
     res.json({

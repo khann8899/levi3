@@ -1,9 +1,9 @@
 // Levi 3 - Position Monitor
 const { getTokenPrice, getSOLPrice } = require('./scanner');
 const { buyToken, sellToken, getSOLBalance } = require('./trader');
-const { getPositions, savePositions, getSettings, addToHistory, addBalanceSnapshot } = require('./data');
+const { getPositions, savePositions, getSettings, saveSettings, addToHistory, addBalanceSnapshot } = require('./data');
 
-let broadcast = null; // WebSocket broadcast function
+let broadcast = null;
 
 function setBroadcast(fn) { broadcast = fn; }
 
@@ -11,15 +11,36 @@ function notify(data) {
   if (broadcast) broadcast(data);
 }
 
+// Cache SOL price to avoid flickering
+let cachedSOLPrice = 150;
+let lastSOLPriceFetch = 0;
+
+async function getStableSOLPrice() {
+  const now = Date.now();
+  // Only fetch every 60 seconds
+  if (now - lastSOLPriceFetch > 60000) {
+    try {
+      const price = await getSOLPrice();
+      if (price && price > 10 && price < 10000) {
+        cachedSOLPrice = price;
+        lastSOLPriceFetch = now;
+      }
+    } catch {}
+  }
+  return cachedSOLPrice;
+}
+
 async function monitorPositions() {
   const positions = getPositions();
   const settings = getSettings();
-  const solPrice = await getSOLPrice();
+  const solPrice = await getStableSOLPrice();
+  let settingsChanged = false;
 
   // Monitor real positions
   for (const [mint, pos] of Object.entries(positions.real)) {
     try {
-      await checkPosition(mint, pos, positions, settings.real, solPrice, false);
+      const changed = await checkPosition(mint, pos, positions, settings.real, solPrice, false, settings);
+      if (changed) settingsChanged = true;
     } catch (e) {
       console.error(`Monitor error ${pos.symbol}: ${e.message}`);
     }
@@ -28,30 +49,33 @@ async function monitorPositions() {
   // Monitor paper positions
   for (const [mint, pos] of Object.entries(positions.paper)) {
     try {
-      await checkPosition(mint, pos, positions, settings.paper, solPrice, true);
+      const changed = await checkPosition(mint, pos, positions, settings.paper, solPrice, true, settings);
+      if (changed) settingsChanged = true;
     } catch (e) {
       console.error(`Paper monitor error ${pos.symbol}: ${e.message}`);
     }
   }
 
   savePositions(positions);
+  if (settingsChanged) saveSettings(settings);
 
   // Update balance snapshots
-  const realBalance = await getSOLBalance();
-  addBalanceSnapshot('real', realBalance * solPrice);
+  try {
+    const solBalance = await getSOLBalance();
+    addBalanceSnapshot('real', solBalance * solPrice);
+  } catch {}
   addBalanceSnapshot('paper', settings.paper.balance);
 
   // Broadcast update
   notify({ type: 'positions_update', positions, solPrice });
 }
 
-async function checkPosition(mint, pos, positions, settings, solPrice, isPaper) {
+async function checkPosition(mint, pos, positions, settings, solPrice, isPaper, allSettings) {
   const currentPrice = await getTokenPrice(mint);
-  if (!currentPrice || currentPrice <= 0) return;
+  if (!currentPrice || currentPrice <= 0) return false;
 
   pos.currentPrice = currentPrice;
   const multiplier = currentPrice / pos.entryPrice;
-  const pnlPercent = (multiplier - 1) * 100;
 
   // Update peak price
   if (currentPrice > pos.peakPrice) pos.peakPrice = currentPrice;
@@ -59,38 +83,83 @@ async function checkPosition(mint, pos, positions, settings, solPrice, isPaper) 
   const dropFromPeak = ((pos.peakPrice - currentPrice) / pos.peakPrice) * 100;
   const dropFromEntry = ((pos.entryPrice - currentPrice) / pos.entryPrice) * 100;
 
-  // Take profit check
-  const tpMultiplier = 1 + (settings.takeProfitPercent / 100);
-  if (multiplier >= tpMultiplier && !pos.tpHit) {
-    console.log(`🎯 TP hit for ${pos.symbol}: ${multiplier.toFixed(2)}x`);
-    await closePosition(mint, pos, positions, settings, solPrice, isPaper, 'Take Profit', multiplier);
-    return;
+  // Multiple Take Profits
+  const takeProfits = settings.takeProfits || [{ percent: settings.takeProfitPercent || 55, sellPercent: 100 }];
+  const tpIndex = pos.tpIndex || 0;
+
+  if (tpIndex < takeProfits.length) {
+    const nextTP = takeProfits[tpIndex];
+    const tpMultiplier = 1 + (nextTP.percent / 100);
+    if (multiplier >= tpMultiplier) {
+      console.log(`🎯 TP${tpIndex + 1} hit for ${pos.symbol}: ${multiplier.toFixed(2)}x → sell ${nextTP.sellPercent}%`);
+      await executeTakeProfit(mint, pos, positions, settings, solPrice, isPaper, multiplier, nextTP, tpIndex, allSettings);
+      return true;
+    }
   }
 
   // Trailing stop (activates after 1.5x)
   if (pos.peakPrice >= pos.entryPrice * 1.5) {
     if (dropFromPeak >= settings.trailingStopPercent) {
       console.log(`📉 Trailing stop for ${pos.symbol}: dropped ${dropFromPeak.toFixed(1)}% from peak`);
-      await closePosition(mint, pos, positions, settings, solPrice, isPaper, 'Trailing Stop', multiplier);
-      return;
+      await closePosition(mint, pos, positions, settings, solPrice, isPaper, 'Trailing Stop', multiplier, allSettings);
+      return true;
     }
   }
 
   // Hard stop loss
   if (dropFromEntry >= settings.stopLossPercent) {
     console.log(`🛑 Stop loss for ${pos.symbol}: -${dropFromEntry.toFixed(1)}%`);
-    await closePosition(mint, pos, positions, settings, solPrice, isPaper, 'Stop Loss', multiplier);
-    return;
+    await closePosition(mint, pos, positions, settings, solPrice, isPaper, 'Stop Loss', multiplier, allSettings);
+    return true;
+  }
+
+  return false;
+}
+
+async function executeTakeProfit(mint, pos, positions, settings, solPrice, isPaper, multiplier, tp, tpIndex, allSettings) {
+  const sellPercent = tp.sellPercent;
+  const portionValue = pos.amountUSD * (pos.remainingPercent / 100) * (sellPercent / 100) * multiplier;
+  const portionCost = pos.amountUSD * (pos.remainingPercent / 100) * (sellPercent / 100);
+  const pnl = portionValue - portionCost;
+
+  pos.tpIndex = tpIndex + 1;
+  pos.remainingPercent = (pos.remainingPercent || 100) * (1 - sellPercent / 100);
+
+  if (isPaper) {
+    allSettings.paper.balance = parseFloat((allSettings.paper.balance + portionValue).toFixed(2));
+    console.log(`📝 Paper TP${tpIndex + 1}: +$${portionValue.toFixed(2)} → balance $${allSettings.paper.balance.toFixed(2)}`);
+  }
+
+  // Check if all TPs hit or remaining is tiny
+  const takeProfits = settings.takeProfits || [];
+  const allTPsHit = pos.tpIndex >= takeProfits.length;
+
+  notify({
+    type: 'position_closed',
+    trade: { symbol: pos.symbol, multiplier, pnlUSD: pnl, isPaper, reason: `TP${tpIndex + 1} (+${tp.percent}%)` },
+    message: `💰 ${isPaper ? '[PAPER] ' : ''}$${pos.symbol} TP${tpIndex + 1} hit! ${multiplier.toFixed(2)}x → sold ${sellPercent}% | +$${pnl.toFixed(2)}`
+  });
+
+  // If all TPs hit, close remainder
+  if (allTPsHit && pos.remainingPercent > 0) {
+    await closePosition(mint, pos, positions, settings, solPrice, isPaper, 'Final TP', multiplier, allSettings);
+  } else {
+    // Save updated position
+    const posStore = isPaper ? positions.paper : positions.real;
+    posStore[mint] = pos;
   }
 }
 
-async function closePosition(mint, pos, positions, settings, solPrice, isPaper, reason, multiplier) {
-  const pnl = pos.amountUSD * (multiplier - 1);
+async function closePosition(mint, pos, positions, settings, solPrice, isPaper, reason, multiplier, allSettings) {
+  const exitValue = pos.amountUSD * multiplier;
+  const pnl = exitValue - pos.amountUSD;
   const isWin = pnl > 0;
 
   if (isPaper) {
-    settings.balance += pos.amountUSD * multiplier;
+    // Add back to paper balance including profit/loss
+    allSettings.paper.balance = parseFloat((allSettings.paper.balance + exitValue).toFixed(2));
     delete positions.paper[mint];
+    console.log(`📝 Paper balance updated: +$${exitValue.toFixed(2)} → $${allSettings.paper.balance.toFixed(2)}`);
   } else {
     const result = await sellToken(mint, 100);
     if (!result.success) {
@@ -120,7 +189,7 @@ async function closePosition(mint, pos, positions, settings, solPrice, isPaper, 
   notify({
     type: 'position_closed',
     trade,
-    message: `${isWin ? '🏆' : '🔴'} ${isPaper ? '[PAPER] ' : ''}${pos.symbol} closed — ${reason} | ${multiplier.toFixed(2)}x | ${isWin ? '+' : ''}$${pnl.toFixed(2)}`
+    message: `${isWin ? '🏆' : '🔴'} ${isPaper ? '[PAPER] ' : ''}$${pos.symbol} — ${reason} | ${multiplier.toFixed(2)}x | ${isWin ? '+' : ''}$${pnl.toFixed(2)}`
   });
 
   console.log(`${isWin ? '✅' : '❌'} ${pos.symbol} closed: ${reason} | ${multiplier.toFixed(2)}x | P&L: $${pnl.toFixed(2)}`);
@@ -132,13 +201,11 @@ async function openPosition(coin, analysis, isPaper, solPrice) {
   const positions = getPositions();
   const posStore = isPaper ? positions.paper : positions.real;
 
-  // Check slots
   if (Object.keys(posStore).length >= modeSettings.maxSlots) {
-    console.log(`⚠️ Slots full for ${isPaper ? 'paper' : 'real'} mode`);
+    console.log(`⚠️ Slots full (${isPaper ? 'paper' : 'real'})`);
     return false;
   }
 
-  // Don't buy same coin twice
   if (posStore[coin.mintAddress]) return false;
 
   const amountUSD = modeSettings.betSize;
@@ -148,14 +215,15 @@ async function openPosition(coin, analysis, isPaper, solPrice) {
       console.log('⚠️ Insufficient paper balance');
       return false;
     }
-    modeSettings.balance -= amountUSD;
+    modeSettings.balance = parseFloat((modeSettings.balance - amountUSD).toFixed(2));
+    saveSettings(settings);
 
     posStore[coin.mintAddress] = {
       symbol: coin.symbol,
       name: coin.name,
-      entryPrice: coin.priceUSD,
-      currentPrice: coin.priceUSD,
-      peakPrice: coin.priceUSD,
+      entryPrice: coin.priceUSD || 0.000001,
+      currentPrice: coin.priceUSD || 0.000001,
+      peakPrice: coin.priceUSD || 0.000001,
       amountUSD,
       isPaper: true,
       openedAt: new Date().toISOString(),
@@ -164,15 +232,10 @@ async function openPosition(coin, analysis, isPaper, solPrice) {
       url: coin.url,
     };
 
-    const { saveSettings } = require('./data');
-    saveSettings(settings);
-
     notify({
       type: 'position_opened',
-      coin,
-      isPaper: true,
-      amountUSD,
-      message: `📝 [PAPER] Opened $${coin.symbol} | Score: ${analysis.score}/10 | $${amountUSD}`
+      coin, isPaper: true, amountUSD,
+      message: `📝 [PAPER] Opened $${coin.symbol} | Score: ${analysis.score}/10 | $${amountUSD} | Balance: $${modeSettings.balance.toFixed(2)}`
     });
 
   } else {
@@ -185,9 +248,9 @@ async function openPosition(coin, analysis, isPaper, solPrice) {
     posStore[coin.mintAddress] = {
       symbol: coin.symbol,
       name: coin.name,
-      entryPrice: coin.priceUSD,
-      currentPrice: coin.priceUSD,
-      peakPrice: coin.priceUSD,
+      entryPrice: coin.priceUSD || 0.000001,
+      currentPrice: coin.priceUSD || 0.000001,
+      peakPrice: coin.priceUSD || 0.000001,
       amountUSD,
       isPaper: false,
       openedAt: new Date().toISOString(),
@@ -199,10 +262,7 @@ async function openPosition(coin, analysis, isPaper, solPrice) {
 
     notify({
       type: 'position_opened',
-      coin,
-      isPaper: false,
-      amountUSD,
-      txid: result.txid,
+      coin, isPaper: false, amountUSD, txid: result.txid,
       message: `🟢 Opened $${coin.symbol} | Score: ${analysis.score}/10 | $${amountUSD}`
     });
   }

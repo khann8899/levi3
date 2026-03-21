@@ -359,8 +359,11 @@
             <input class="setting-input" type="number" id="real-maxAgeMins" placeholder="15" />
           </div>
           <div class="setting-row">
-            <div class="setting-label"><span>Take Profit (%)</span></div>
-            <input class="setting-input" type="number" id="real-takeProfitPercent" placeholder="55" />
+            <div class="setting-label" style="margin-bottom:8px">
+              <span>Take Profit Points</span>
+              <button onclick="addTP('real')" style="background:var(--accent);color:white;border:none;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer">+ Add</button>
+            </div>
+            <div id="real-tps"></div>
           </div>
           <div class="setting-row">
             <div class="setting-label"><span>Stop Loss (%)</span></div>
@@ -400,8 +403,11 @@
             <input class="setting-input" type="number" id="paper-maxAgeMins" placeholder="15" />
           </div>
           <div class="setting-row">
-            <div class="setting-label"><span>Take Profit (%)</span></div>
-            <input class="setting-input" type="number" id="paper-takeProfitPercent" placeholder="55" />
+            <div class="setting-label" style="margin-bottom:8px">
+              <span>Take Profit Points</span>
+              <button onclick="addTP('paper')" style="background:var(--accent);color:white;border:none;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer">+ Add</button>
+            </div>
+            <div id="paper-tps"></div>
           </div>
           <div class="setting-row">
             <div class="setting-label"><span>Stop Loss (%)</span></div>
@@ -429,6 +435,58 @@ let balanceChart = null;
 let currentChartMode = 'real';
 let botActive = false;
 let settingsState = { real: { enabled: false }, paper: { enabled: true } };
+
+// ==================== TP MANAGEMENT ====================
+
+function renderTPs(mode, tps) {
+  const container = document.getElementById(`${mode}-tps`);
+  container.innerHTML = '';
+  (tps || []).forEach((tp, i) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:center';
+    row.innerHTML = `
+      <input class="setting-input" type="number" placeholder="Growth %" value="${tp.percent}"
+        id="${mode}-tp-percent-${i}" style="flex:1" />
+      <span style="color:var(--text2);font-size:13px">% →</span>
+      <input class="setting-input" type="number" placeholder="Sell %" value="${tp.sellPercent}"
+        id="${mode}-tp-sell-${i}" style="flex:1" />
+      <span style="color:var(--text2);font-size:13px">%</span>
+      <button onclick="removeTP('${mode}', ${i})"
+        style="background:var(--red);color:white;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px">✕</button>
+    `;
+    container.appendChild(row);
+  });
+  // Show hint
+  if (!tps || tps.length === 0) {
+    container.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:4px 0">No TPs — trailing stop only</div>';
+  }
+}
+
+function addTP(mode) {
+  const tps = getTPs(mode);
+  tps.push({ percent: 55, sellPercent: 50 });
+  renderTPs(mode, tps);
+}
+
+function removeTP(mode, index) {
+  const tps = getTPs(mode);
+  tps.splice(index, 1);
+  renderTPs(mode, tps);
+}
+
+function getTPs(mode) {
+  const container = document.getElementById(`${mode}-tps`);
+  const tps = [];
+  let i = 0;
+  while (document.getElementById(`${mode}-tp-percent-${i}`)) {
+    tps.push({
+      percent: parseFloat(document.getElementById(`${mode}-tp-percent-${i}`).value) || 55,
+      sellPercent: parseFloat(document.getElementById(`${mode}-tp-sell-${i}`).value) || 50,
+    });
+    i++;
+  }
+  return tps;
+}
 
 // ==================== AUTH ====================
 
@@ -675,10 +733,18 @@ async function loadSettings() {
     const toggle = document.getElementById(`${mode}-toggle`);
     toggle.className = 'toggle' + (s.enabled ? ' on' : '');
 
-    Object.entries(s).forEach(([key, val]) => {
+    ['betSize', 'maxSlots', 'minLiquidity', 'maxAgeMins', 'stopLossPercent', 'trailingStopPercent'].forEach(key => {
       const el = document.getElementById(`${mode}-${key}`);
-      if (el && el.tagName === 'INPUT') el.value = val;
+      if (el) el.value = s[key];
     });
+
+    if (mode === 'paper') {
+      const balEl = document.getElementById('paper-balance');
+      if (balEl) balEl.value = s.balance;
+    }
+
+    // Render TPs
+    renderTPs(mode, s.takeProfits || [{ percent: s.takeProfitPercent || 55, sellPercent: 100 }]);
   });
 }
 
@@ -691,7 +757,7 @@ function toggleSetting(mode) {
 async function saveSettings() {
   ['real', 'paper'].forEach(mode => {
     const s = settingsState[mode];
-    ['betSize', 'maxSlots', 'minLiquidity', 'maxAgeMins', 'takeProfitPercent', 'stopLossPercent', 'trailingStopPercent'].forEach(key => {
+    ['betSize', 'maxSlots', 'minLiquidity', 'maxAgeMins', 'stopLossPercent', 'trailingStopPercent'].forEach(key => {
       const el = document.getElementById(`${mode}-${key}`);
       if (el) s[key] = parseFloat(el.value) || s[key];
     });
@@ -699,6 +765,8 @@ async function saveSettings() {
       const balEl = document.getElementById('paper-balance');
       if (balEl) s.balance = parseFloat(balEl.value) || s.balance;
     }
+    // Save TPs
+    s.takeProfits = getTPs(mode);
   });
 
   await api('/api/settings', 'POST', settingsState);

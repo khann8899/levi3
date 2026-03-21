@@ -30,7 +30,10 @@ const DEFAULT_SETTINGS = {
     maxSlots: 3,
     minLiquidity: 10000,
     maxAgeMins: 15,
-    takeProfitPercent: 55,
+    takeProfits: [
+      { percent: 55, sellPercent: 50 },
+      { percent: 100, sellPercent: 50 },
+    ],
     stopLossPercent: 25,
     trailingStopPercent: 20,
   },
@@ -41,7 +44,10 @@ const DEFAULT_SETTINGS = {
     maxSlots: 3,
     minLiquidity: 10000,
     maxAgeMins: 15,
-    takeProfitPercent: 55,
+    takeProfits: [
+      { percent: 55, sellPercent: 50 },
+      { percent: 100, sellPercent: 50 },
+    ],
     stopLossPercent: 25,
     trailingStopPercent: 20,
   }

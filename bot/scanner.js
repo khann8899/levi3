@@ -2,10 +2,12 @@
 const axios = require('axios');
 
 const SCAN_URLS = [
-  'https://api.dexscreener.com/latest/dex/search?q=pump.fun&chainIds=solana',
   'https://api.dexscreener.com/latest/dex/search?q=pumpswap&chainIds=solana',
+  'https://api.dexscreener.com/latest/dex/search?q=pump.fun&chainIds=solana',
   'https://api.dexscreener.com/latest/dex/search?q=raydium&chainIds=solana',
   'https://api.dexscreener.com/latest/dex/search?q=moonshot&chainIds=solana',
+  'https://api.dexscreener.com/latest/dex/search?q=solana+meme&chainIds=solana',
+  'https://api.dexscreener.com/latest/dex/search?q=sol+token&chainIds=solana',
 ];
 
 const SKIP_MINTS = new Set([
