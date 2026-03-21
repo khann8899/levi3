@@ -174,8 +174,8 @@ async function getSOLPrice() {
 async function analyzeCoin(coin, settings, connection) {
   let tokenData = { ...coin };
 
-  // If liquidity is 0, fetch fresh data from DexScreener token endpoint
-  if (tokenData.liquidityUSD === 0) {
+  // If liquidity is 0 OR symbol is unknown, fetch fresh data from DexScreener token endpoint
+  if (tokenData.liquidityUSD === 0 || tokenData.symbol === 'UNKNOWN') {
     try {
       const response = await axios.get(
         `https://api.dexscreener.com/latest/dex/tokens/${coin.mintAddress}`,
@@ -186,14 +186,25 @@ async function analyzeCoin(coin, settings, connection) {
         const best = pairs.sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0))[0];
         tokenData.liquidityUSD = best.liquidity?.usd || 0;
         tokenData.priceUSD = parseFloat(best.priceUsd) || tokenData.priceUSD;
+        tokenData.symbol = best.baseToken?.symbol || tokenData.symbol;
+        tokenData.name = best.baseToken?.name || tokenData.name;
         tokenData.volumeH1 = best.volume?.h1 || 0;
         tokenData.txnsH1 = (best.txns?.h1?.buys || 0) + (best.txns?.h1?.sells || 0);
         tokenData.buysH1 = best.txns?.h1?.buys || 0;
         tokenData.sellsH1 = best.txns?.h1?.sells || 0;
         tokenData.url = best.url || tokenData.url;
-        console.log(`📊 Enriched ${coin.symbol}: liq=$${Math.round(tokenData.liquidityUSD)}`);
+        // Set age from pair creation time
+        if (best.pairCreatedAt) {
+          tokenData.ageMinutes = (Date.now() - best.pairCreatedAt) / 1000 / 60;
+        }
+        console.log(`📊 Enriched ${tokenData.symbol}: liq=$${Math.round(tokenData.liquidityUSD)} age=${Math.round(tokenData.ageMinutes)}m`);
       }
     } catch {}
+  }
+
+  // Apply age filter after enrichment (important for profile endpoint coins)
+  if (tokenData.ageMinutes > settings.maxAgeMins) {
+    return { passes: false, reason: `Too old: ${Math.round(tokenData.ageMinutes)}m` };
   }
 
   // Basic liquidity check
