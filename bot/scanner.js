@@ -2,12 +2,9 @@
 const axios = require('axios');
 
 const SCAN_URLS = [
+  'https://api.dexscreener.com/token-profiles/latest/v1',  // Latest token profiles - most fresh
   'https://api.dexscreener.com/latest/dex/search?q=pumpswap&chainIds=solana',
   'https://api.dexscreener.com/latest/dex/search?q=pump.fun&chainIds=solana',
-  'https://api.dexscreener.com/latest/dex/search?q=raydium&chainIds=solana',
-  'https://api.dexscreener.com/latest/dex/search?q=moonshot&chainIds=solana',
-  'https://api.dexscreener.com/latest/dex/search?q=solana+meme&chainIds=solana',
-  'https://api.dexscreener.com/latest/dex/search?q=sol+token&chainIds=solana',
 ];
 
 const SKIP_MINTS = new Set([
@@ -23,7 +20,6 @@ let lastReset = Date.now();
 let urlIndex = 0;
 
 async function fetchNewTokens(maxAgeMins) {
-  // Reset seen tokens every 30 minutes
   if (Date.now() - lastReset > 30 * 60 * 1000) {
     seenTokens = new Set();
     lastReset = Date.now();
@@ -32,6 +28,7 @@ async function fetchNewTokens(maxAgeMins) {
 
   const url = SCAN_URLS[urlIndex % SCAN_URLS.length];
   urlIndex++;
+  const isProfileEndpoint = url.includes('token-profiles');
 
   try {
     const response = await axios.get(url, {
@@ -39,44 +36,79 @@ async function fetchNewTokens(maxAgeMins) {
       headers: { 'User-Agent': 'Mozilla/5.0' }
     });
 
-    const pairs = response.data?.pairs || [];
     const newCoins = [];
     const now = Date.now();
 
-    // Sort newest first
-    pairs.sort((a, b) => b.pairCreatedAt - a.pairCreatedAt);
+    if (isProfileEndpoint) {
+      // token-profiles returns array of {chainId, tokenAddress, ...}
+      const profiles = response.data || [];
+      const solanaProfiles = profiles.filter(p => p.chainId === 'solana');
 
-    for (const pair of pairs) {
-      const mint = pair.baseToken?.address;
-      if (!mint || SKIP_MINTS.has(mint)) continue;
-      if (SKIP_SYMBOLS.has(pair.baseToken?.symbol)) continue;
-      if (seenTokens.has(mint)) continue;
+      for (const profile of solanaProfiles) {
+        const mint = profile.tokenAddress;
+        if (!mint || SKIP_MINTS.has(mint)) continue;
+        if (seenTokens.has(mint)) continue;
+        seenTokens.add(mint);
 
-      const ageMinutes = (now - pair.pairCreatedAt) / 1000 / 60;
-      if (ageMinutes < 0 || ageMinutes > maxAgeMins) continue;
+        // Add to list — liquidity will be fetched in analyzeCoin
+        newCoins.push({
+          mintAddress: mint,
+          symbol: profile.symbol || 'UNKNOWN',
+          name: profile.name || 'Unknown',
+          priceUSD: 0,
+          liquidityUSD: 0, // Will be fetched
+          volumeH1: 0,
+          priceChangeH1: 0,
+          txnsH1: 0,
+          buysH1: 0,
+          sellsH1: 0,
+          ageMinutes: 0, // Will be set after enrichment
+          url: profile.url || `https://dexscreener.com/solana/${mint}`,
+          dexId: '',
+        });
+      }
+      console.log(`📡 [profiles] ${profiles.length} total → ${newCoins.length} new Solana tokens`);
 
-      seenTokens.add(mint);
+    } else {
+      // Search endpoint returns {pairs: [...]}
+      const pairs = response.data?.pairs || [];
+      pairs.sort((a, b) => b.pairCreatedAt - a.pairCreatedAt);
 
-      newCoins.push({
-        mintAddress: mint,
-        symbol: pair.baseToken.symbol || 'UNKNOWN',
-        name: pair.baseToken.name || 'Unknown',
-        priceUSD: parseFloat(pair.priceUsd) || 0,
-        liquidityUSD: pair.liquidity?.usd || 0,
-        volumeH1: pair.volume?.h1 || 0,
-        priceChangeH1: pair.priceChange?.h1 || 0,
-        txnsH1: (pair.txns?.h1?.buys || 0) + (pair.txns?.h1?.sells || 0),
-        buysH1: pair.txns?.h1?.buys || 0,
-        sellsH1: pair.txns?.h1?.sells || 0,
-        ageMinutes,
-        url: pair.url || `https://dexscreener.com/solana/${mint}`,
-        dexId: pair.dexId || '',
-        pairAddress: pair.pairAddress || '',
-      });
+      for (const pair of pairs) {
+        const mint = pair.baseToken?.address;
+        if (!mint || SKIP_MINTS.has(mint)) continue;
+        if (SKIP_SYMBOLS.has(pair.baseToken?.symbol)) continue;
+        if (seenTokens.has(mint)) continue;
+
+        const ageMinutes = (now - pair.pairCreatedAt) / 1000 / 60;
+        if (ageMinutes < 0 || ageMinutes > maxAgeMins) continue;
+
+        seenTokens.add(mint);
+        newCoins.push({
+          mintAddress: mint,
+          symbol: pair.baseToken.symbol || 'UNKNOWN',
+          name: pair.baseToken.name || 'Unknown',
+          priceUSD: parseFloat(pair.priceUsd) || 0,
+          liquidityUSD: pair.liquidity?.usd || 0,
+          volumeH1: pair.volume?.h1 || 0,
+          priceChangeH1: pair.priceChange?.h1 || 0,
+          txnsH1: (pair.txns?.h1?.buys || 0) + (pair.txns?.h1?.sells || 0),
+          buysH1: pair.txns?.h1?.buys || 0,
+          sellsH1: pair.txns?.h1?.sells || 0,
+          ageMinutes,
+          url: pair.url || `https://dexscreener.com/solana/${mint}`,
+          dexId: pair.dexId || '',
+        });
+      }
+
+      const query = url.split('q=')[1]?.split('&')[0] || '';
+      console.log(`📡 [${query}] ${pairs.length} pairs → ${newCoins.length} new (under ${maxAgeMins}m)`);
     }
 
-    const query = url.split('q=')[1]?.split('&')[0] || '';
-    console.log(`📡 [${query}] ${pairs.length} pairs → ${newCoins.length} new (under ${maxAgeMins}m)`);
+    if (newCoins.length > 0) {
+      console.log(`🔍 New coins: ${newCoins.map(c => c.symbol + '($' + Math.round(c.liquidityUSD) + ')').join(', ')}`);
+    }
+
     return newCoins;
 
   } catch (e) {
