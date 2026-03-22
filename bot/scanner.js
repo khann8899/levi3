@@ -169,16 +169,17 @@ async function runStage1Check(coin) {
     if (details.priceUSD > 0) coin.priceUSD = details.priceUSD;
   }
 
-  // Save snapshot for Stage 2 comparison
+  // Save snapshot for Stage 2 comparison including price
   coin.snapshot = {
     liquidityUSD: coin.liquidityUSD,
     txCount: coin.txnsH1,
     buys: coin.buysH1,
     volumeH1: coin.volumeH1,
+    priceUSD: coin.priceUSD || details?.priceUSD || 0,
     time: Date.now(),
   };
 
-  console.log(`⏳ ${coin.symbol} stage1 passed | liq:$${Math.round(coin.liquidityUSD)} | txns:${coin.txnsH1} | honeypot:no | waiting 60s...`);
+  console.log(`⏳ ${coin.symbol} stage1 | liq:$${Math.round(coin.liquidityUSD)} | txns:${coin.txnsH1} | price:$${coin.snapshot.priceUSD.toFixed(8)} | waiting 60s...`);
   return { pass: true, honeypot };
 }
 
@@ -209,7 +210,24 @@ async function runStage2Check(coin, settings, connection) {
   const txImprovement = snap.txCount > 0 ? currentTxns / snap.txCount : 1;
   const buyRatio = currentTxns > 0 ? currentBuys / currentTxns : 0;
 
-  console.log(`🔬 ${coin.symbol} stage2 | liq:$${Math.round(currentLiq)}(${liqImprovement.toFixed(1)}x) | txns:${currentTxns}(${txImprovement.toFixed(1)}x) | buyratio:${(buyRatio*100).toFixed(0)}%`);
+  // Price momentum — did price go UP since stage 1?
+  const snapPrice = snap.priceUSD || 0;
+  const currentPrice = details?.priceUSD || coin.priceUSD || 0;
+  const priceChange = snapPrice > 0 ? ((currentPrice - snapPrice) / snapPrice) * 100 : 0;
+
+  console.log(`🔬 ${coin.symbol} | liq:$${Math.round(currentLiq)}(${liqImprovement.toFixed(1)}x) | txns:${currentTxns}(${txImprovement.toFixed(1)}x) | buyratio:${(buyRatio*100).toFixed(0)}% | momentum:${priceChange.toFixed(1)}%`);
+
+  // DEAD COIN CHECK — if price hasn't moved at all in 60s, skip
+  if (priceChange <= 0 && currentTxns < 20) {
+    console.log(`❌ ${coin.symbol} dead — no price movement and low activity`);
+    return { passes: false, reason: 'Dead coin — no momentum' };
+  }
+
+  // Minimum activity — need at least 10 transactions
+  if (currentTxns < 10) {
+    console.log(`❌ ${coin.symbol} too quiet — only ${currentTxns} txns`);
+    return { passes: false, reason: `Too quiet: ${currentTxns} txns` };
+  }
 
   // Check improvement requirement - OR logic (either liq OR txns improved)
   const hasImprovedLiq = liqImprovement >= 2;
@@ -243,13 +261,15 @@ async function runStage2Check(coin, settings, connection) {
   let score = 5;
   if (currentLiq > 50000) score += 2;
   else if (currentLiq > 20000) score += 1;
-  else if (currentLiq > 5000) score += 0;
+  else if (currentLiq > 7000) score += 0;
   if (currentVolume > 10000) score += 1;
   if (currentTxns > 50) score += 1;
   if (buyRatio > 0.75) score += 1;
   if (hasMintAuth) score -= 2;
-  if (liqImprovement >= 3 || txImprovement >= 3) score += 1; // Bonus for 3x improvement
-  if (coin.bondingProgress > 20) score += 1; // Bonus for high bonding curve progress
+  if (priceChange > 10) score += 1;  // Bonus for positive momentum
+  if (priceChange > 30) score += 1;  // Extra bonus for strong momentum
+  if (liqImprovement >= 3 || txImprovement >= 3) score += 1;
+  if (coin.bondingProgress > 30) score += 1;
   score = Math.max(1, Math.min(10, score));
 
   // Update coin with latest data
