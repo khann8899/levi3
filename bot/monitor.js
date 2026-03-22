@@ -2,7 +2,6 @@
 const { getTokenPrice, getSOLPrice } = require('./scanner');
 const { buyToken, sellToken, getSOLBalance } = require('./trader');
 const { getPositions, savePositions, getSettings, saveSettings, addToHistory, addBalanceSnapshot } = require('./data');
-
 let broadcast = null;
 
 function setBroadcast(fn) { broadcast = fn; }
@@ -83,6 +82,19 @@ async function checkPosition(mint, pos, positions, settings, solPrice, isPaper, 
   const dropFromPeak = ((pos.peakPrice - currentPrice) / pos.peakPrice) * 100;
   const dropFromEntry = ((pos.entryPrice - currentPrice) / pos.entryPrice) * 100;
 
+  // Max hold time check
+  const maxHoldMins = settings.maxHoldMins || 20;
+  const holdMins = (Date.now() - new Date(pos.openedAt)) / 1000 / 60;
+  if (holdMins >= maxHoldMins) {
+    console.log(`⏰ Max hold time reached for ${pos.symbol} (${holdMins.toFixed(1)}m)`);
+    if (isPaper) {
+      await closePosition(mint, pos, positions, settings, solPrice, isPaper, `Expired (${maxHoldMins}m)`, multiplier, allSettings);
+    } else {
+      await closePosition(mint, pos, positions, settings, solPrice, isPaper, `Expired (${maxHoldMins}m)`, multiplier, allSettings);
+    }
+    return true;
+  }
+
   // Multiple Take Profits
   const takeProfits = (settings.takeProfits && settings.takeProfits.length > 0)
     ? settings.takeProfits
@@ -122,48 +134,60 @@ async function checkPosition(mint, pos, positions, settings, solPrice, isPaper, 
 
 async function executeTakeProfit(mint, pos, positions, settings, solPrice, isPaper, multiplier, tp, tpIndex, allSettings) {
   const sellPercent = tp.sellPercent;
-  const portionValue = pos.amountUSD * (pos.remainingPercent / 100) * (sellPercent / 100) * multiplier;
-  const portionCost = pos.amountUSD * (pos.remainingPercent / 100) * (sellPercent / 100);
-  const pnl = portionValue - portionCost;
+  const currentRemaining = pos.remainingPercent || 100;
 
+  // Calculate value of the portion being sold
+  const portionOriginalCost = pos.amountUSD * (currentRemaining / 100) * (sellPercent / 100);
+  const portionValue = portionOriginalCost * multiplier;
+  const pnl = portionValue - portionOriginalCost;
+
+  // Update position
   pos.tpIndex = tpIndex + 1;
-  pos.remainingPercent = (pos.remainingPercent || 100) * (1 - sellPercent / 100);
+  pos.remainingPercent = currentRemaining * (1 - sellPercent / 100);
 
   if (isPaper) {
     allSettings.paper.balance = parseFloat((allSettings.paper.balance + portionValue).toFixed(2));
-    console.log(`📝 Paper TP${tpIndex + 1}: +$${portionValue.toFixed(2)} → balance $${allSettings.paper.balance.toFixed(2)}`);
+    console.log(`📝 Paper TP${tpIndex + 1}: sold ${sellPercent}% → +$${portionValue.toFixed(2)} | balance $${allSettings.paper.balance.toFixed(2)} | remaining: ${pos.remainingPercent.toFixed(1)}%`);
   }
 
-  // Check if all TPs hit or remaining is tiny
   const takeProfits = settings.takeProfits || [];
   const allTPsHit = pos.tpIndex >= takeProfits.length;
 
   notify({
     type: 'position_closed',
     trade: { symbol: pos.symbol, multiplier, pnlUSD: pnl, isPaper, reason: `TP${tpIndex + 1} (+${tp.percent}%)` },
-    message: `💰 ${isPaper ? '[PAPER] ' : ''}$${pos.symbol} TP${tpIndex + 1} hit! ${multiplier.toFixed(2)}x → sold ${sellPercent}% | +$${pnl.toFixed(2)}`
+    message: `💰 ${isPaper ? '[PAPER] ' : ''}$${pos.symbol} TP${tpIndex + 1} | ${multiplier.toFixed(2)}x | sold ${sellPercent}% | +$${pnl.toFixed(2)} | ${pos.remainingPercent.toFixed(0)}% left`
   });
 
-  // If all TPs hit, close remainder
-  if (allTPsHit && pos.remainingPercent > 0) {
-    await closePosition(mint, pos, positions, settings, solPrice, isPaper, 'Final TP', multiplier, allSettings);
+  if (allTPsHit) {
+    // Close remaining position
+    if (pos.remainingPercent > 1) {
+      await closePosition(mint, pos, positions, settings, solPrice, isPaper, 'Final TP', multiplier, allSettings);
+    } else {
+      // Tiny remainder, just remove
+      const posStore = isPaper ? positions.paper : positions.real;
+      delete posStore[mint];
+    }
   } else {
-    // Save updated position
+    // Save updated position with new tpIndex and remainingPercent
     const posStore = isPaper ? positions.paper : positions.real;
     posStore[mint] = pos;
+    savePositions(positions); // Save immediately so next cycle picks up new tpIndex
   }
 }
 
 async function closePosition(mint, pos, positions, settings, solPrice, isPaper, reason, multiplier, allSettings) {
-  const exitValue = pos.amountUSD * multiplier;
-  const pnl = exitValue - pos.amountUSD;
+  // Only use remainingPercent of original bet for exit value calculation
+  const remainingPercent = pos.remainingPercent || 100;
+  const remainingCost = pos.amountUSD * (remainingPercent / 100);
+  const exitValue = remainingCost * multiplier;
+  const pnl = exitValue - remainingCost;
   const isWin = pnl > 0;
 
   if (isPaper) {
-    // Add back to paper balance including profit/loss
     allSettings.paper.balance = parseFloat((allSettings.paper.balance + exitValue).toFixed(2));
     delete positions.paper[mint];
-    console.log(`📝 Paper balance updated: +$${exitValue.toFixed(2)} → $${allSettings.paper.balance.toFixed(2)}`);
+    console.log(`📝 Paper closed (${reason}): +$${exitValue.toFixed(2)} → balance $${allSettings.paper.balance.toFixed(2)}`);
   } else {
     const result = await sellToken(mint, 100);
     if (!result.success) {

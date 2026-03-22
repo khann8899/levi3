@@ -370,6 +370,10 @@
             <div id="real-tps"></div>
           </div>
           <div class="setting-row">
+            <div class="setting-label"><span>Max Hold Time (mins)</span></div>
+            <input class="setting-input" type="number" id="real-maxHoldMins" placeholder="20" />
+          </div>
+          <div class="setting-row">
             <div class="setting-label"><span>Stop Loss (%)</span></div>
             <input class="setting-input" type="number" id="real-stopLossPercent" placeholder="25" />
           </div>
@@ -416,6 +420,10 @@
               <button onclick="addTP('paper')" style="background:var(--accent);color:white;border:none;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer">+ Add</button>
             </div>
             <div id="paper-tps"></div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-label"><span>Max Hold Time (mins)</span></div>
+            <input class="setting-input" type="number" id="paper-maxHoldMins" placeholder="20" />
           </div>
           <div class="setting-row">
             <div class="setting-label"><span>Stop Loss (%)</span></div>
@@ -750,7 +758,7 @@ async function loadSettings() {
     const toggle = document.getElementById(`${mode}-toggle`);
     toggle.className = 'toggle' + (s.enabled ? ' on' : '');
 
-    ['betSize', 'maxSlots', 'minLiquidity', 'minScore', 'maxAgeMins', 'stopLossPercent', 'trailingStopPercent'].forEach(key => {
+    ['betSize', 'maxSlots', 'minLiquidity', 'minScore', 'maxAgeMins', 'maxHoldMins', 'stopLossPercent', 'trailingStopPercent'].forEach(key => {
       const el = document.getElementById(`${mode}-${key}`);
       if (el) el.value = s[key];
     });
@@ -774,7 +782,7 @@ function toggleSetting(mode) {
 async function saveSettings() {
   ['real', 'paper'].forEach(mode => {
     const s = settingsState[mode];
-    ['betSize', 'maxSlots', 'minLiquidity', 'minScore', 'maxAgeMins', 'stopLossPercent', 'trailingStopPercent'].forEach(key => {
+    ['betSize', 'maxSlots', 'minLiquidity', 'minScore', 'maxAgeMins', 'maxHoldMins', 'stopLossPercent', 'trailingStopPercent'].forEach(key => {
       const el = document.getElementById(`${mode}-${key}`);
       if (el) s[key] = parseFloat(el.value) || s[key];
     });

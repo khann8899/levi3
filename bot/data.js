@@ -31,6 +31,7 @@ const DEFAULT_SETTINGS = {
     minLiquidity: 3000,
     maxAgeMins: 15,
     minScore: 8,
+    maxHoldMins: 20,
     takeProfits: [
       { percent: 55, sellPercent: 50 },
       { percent: 100, sellPercent: 50 },
@@ -46,6 +47,7 @@ const DEFAULT_SETTINGS = {
     minLiquidity: 3000,
     maxAgeMins: 15,
     minScore: 8,
+    maxHoldMins: 20,
     takeProfits: [
       { percent: 55, sellPercent: 50 },
       { percent: 100, sellPercent: 50 },
