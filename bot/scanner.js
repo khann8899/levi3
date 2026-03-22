@@ -1,9 +1,10 @@
-// Levi 3 - Enhanced Token Scanner with Two-Pass Validation
+// Levi 3 - Dip Buy Strategy Scanner
 const axios = require('axios');
 const WebSocket = require('ws');
 
-let newCoinQueue = []; // Stage 1: newly launched, waiting for first check
-let watchlist = {};    // Stage 2: passed first check, waiting 60s for recheck
+// Coin lifecycle stores
+let newCoinQueue = [];   // Just launched, waiting for stage 1
+let watchlist = {};      // Passed stage 1, watching for pump+dip pattern
 let wsConnected = false;
 let pumpWs = null;
 
@@ -33,16 +34,16 @@ function connectPumpWebSocket() {
           const bondingCurveSOL = msg.vSolInBondingCurve || 0;
           const totalSupply = msg.vTokensInBondingCurve || 1000000000;
           const liquidityUSD = bondingCurveSOL * solPrice;
-          const bondingProgress = (bondingCurveSOL / 85) * 100; // 85 SOL = graduation threshold
+          const bondingProgress = Math.min((bondingCurveSOL / 85) * 100, 100);
 
           const coin = {
             mintAddress: msg.mint,
             symbol: msg.symbol || msg.name?.slice(0, 10) || 'UNKNOWN',
             name: msg.name || 'Unknown',
-            priceUSD: bondingCurveSOL > 0 ? (bondingCurveSOL * solPrice) / totalSupply : 0,
+            priceUSD: totalSupply > 0 ? (bondingCurveSOL * solPrice) / totalSupply : 0,
             liquidityUSD,
             bondingCurveSOL,
-            bondingProgress: Math.min(bondingProgress, 100),
+            bondingProgress,
             totalSupply,
             volumeH1: 0,
             txnsH1: 1,
@@ -53,17 +54,9 @@ function connectPumpWebSocket() {
             url: `https://pump.fun/${msg.mint}`,
             dexId: 'pump',
             isNewLaunch: true,
-            // Snapshot for 3x improvement check
-            snapshot: {
-              liquidityUSD,
-              txCount: 1,
-              buys: 1,
-              time: Date.now(),
-            }
           };
 
           newCoinQueue.push(coin);
-          console.log(`🆕 ${coin.symbol} launched | liq:$${Math.round(liquidityUSD)} | curve:${bondingProgress.toFixed(1)}%`);
         }
       } catch {}
     });
@@ -85,7 +78,7 @@ function connectPumpWebSocket() {
   }
 }
 
-// ==================== COIN ANALYSIS ====================
+// ==================== DATA FETCHING ====================
 
 async function fetchTokenDetails(mintAddress) {
   try {
@@ -141,310 +134,257 @@ async function checkMintAuthority(mintAddress, connection) {
   }
 }
 
-// Stage 1: Quick initial check (runs at 30 seconds after launch)
+// ==================== STAGE 1: BASIC SAFETY CHECK ====================
+
 async function runStage1Check(coin) {
-  // Honeypot check first (most important)
+  // Honeypot check
   const honeypot = await checkHoneypot(coin.mintAddress).catch(() => ({ isHoneypot: false, sellTax: 0 }));
   if (honeypot.isHoneypot) {
-    console.log(`❌ ${coin.symbol} HONEYPOT - dumped`);
-    return { pass: false, reason: 'Honeypot' };
+    console.log(`❌ ${coin.symbol} honeypot — skip`);
+    return { pass: false };
   }
   if (honeypot.sellTax > 15) {
-    console.log(`❌ ${coin.symbol} high sell tax (${honeypot.sellTax}%) - dumped`);
-    return { pass: false, reason: `Sell tax ${honeypot.sellTax}%` };
+    console.log(`❌ ${coin.symbol} sell tax ${honeypot.sellTax}% — skip`);
+    return { pass: false };
   }
 
-  // Try to get DexScreener data
+  // Get initial price data from DexScreener
   const details = await fetchTokenDetails(coin.mintAddress);
   if (details) {
-    // Merge DexScreener data
-    coin.liquidityUSD = Math.max(coin.liquidityUSD, details.liquidityUSD);
+    if (details.liquidityUSD > 0) coin.liquidityUSD = details.liquidityUSD;
+    if (details.priceUSD > 0) coin.priceUSD = details.priceUSD;
+    if (details.symbol && details.symbol !== 'UNKNOWN') coin.symbol = details.symbol;
+    if (details.name) coin.name = details.name;
+    if (details.url) coin.url = details.url;
     coin.txnsH1 = details.txnsH1 || coin.txnsH1;
     coin.buysH1 = details.buysH1 || coin.buysH1;
     coin.sellsH1 = details.sellsH1 || coin.sellsH1;
-    coin.volumeH1 = details.volumeH1 || coin.volumeH1;
-    if (details.symbol && details.symbol !== 'UNKNOWN') coin.symbol = details.symbol;
-    if (details.name) coin.name = details.name;
-    if (details.url) coin.url = details.url;
-    if (details.priceUSD > 0) coin.priceUSD = details.priceUSD;
   }
 
-  // Save snapshot for Stage 2 comparison including price
-  coin.snapshot = {
-    liquidityUSD: coin.liquidityUSD,
-    txCount: coin.txnsH1,
-    buys: coin.buysH1,
-    volumeH1: coin.volumeH1,
-    priceUSD: coin.priceUSD || details?.priceUSD || 0,
-    time: Date.now(),
-  };
-
-  console.log(`⏳ ${coin.symbol} stage1 | liq:$${Math.round(coin.liquidityUSD)} | txns:${coin.txnsH1} | price:$${coin.snapshot.priceUSD.toFixed(8)} | waiting 60s...`);
-  return { pass: true, honeypot };
-}
-
-// Stage 2: Full check after 60 seconds - did metrics improve?
-async function runStage2Check(coin, settings, connection) {
-  const details = await fetchTokenDetails(coin.mintAddress);
-
-  let currentLiq = coin.liquidityUSD;
-  let currentTxns = coin.txnsH1;
-  let currentBuys = coin.buysH1;
-  let currentSells = coin.sellsH1;
-  let currentVolume = coin.volumeH1;
-
-  if (details) {
-    currentLiq = Math.max(currentLiq, details.liquidityUSD);
-    currentTxns = details.txnsH1 || currentTxns;
-    currentBuys = details.buysH1 || currentBuys;
-    currentSells = details.sellsH1 || currentSells;
-    currentVolume = details.volumeH1 || currentVolume;
-    if (details.symbol && details.symbol !== 'UNKNOWN') coin.symbol = details.symbol;
-    if (details.name) coin.name = details.name;
-    if (details.url) coin.url = details.url;
-    if (details.priceUSD > 0) coin.priceUSD = details.priceUSD;
+  // Need some minimum liquidity to even be worth watching
+  if (coin.liquidityUSD < 2000) {
+    return { pass: false };
   }
 
-  const snap = coin.snapshot;
-  const liqImprovement = snap.liquidityUSD > 0 ? currentLiq / snap.liquidityUSD : 1;
-  const txImprovement = snap.txCount > 0 ? currentTxns / snap.txCount : 1;
-  const buyRatio = currentTxns > 0 ? currentBuys / currentTxns : 0;
-
-  // Price momentum — did price go UP since stage 1?
-  const snapPrice = snap.priceUSD || 0;
-  const currentPrice = details?.priceUSD || coin.priceUSD || 0;
-  const priceChange = snapPrice > 0 ? ((currentPrice - snapPrice) / snapPrice) * 100 : 0;
-
-  console.log(`🔬 ${coin.symbol} | liq:$${Math.round(currentLiq)}(${liqImprovement.toFixed(1)}x) | txns:${currentTxns}(${txImprovement.toFixed(1)}x) | buyratio:${(buyRatio*100).toFixed(0)}% | momentum:${priceChange.toFixed(1)}%`);
-
-  // DEAD COIN CHECK — if price hasn't moved at all in 60s, skip
-  if (priceChange <= 0 && currentTxns < 20) {
-    console.log(`❌ ${coin.symbol} dead — no price movement and low activity`);
-    return { passes: false, reason: 'Dead coin — no momentum' };
-  }
-
-  // Minimum activity — need at least 10 transactions
-  if (currentTxns < 10) {
-    console.log(`❌ ${coin.symbol} too quiet — only ${currentTxns} txns`);
-    return { passes: false, reason: `Too quiet: ${currentTxns} txns` };
-  }
-
-  // Check improvement requirement - OR logic (either liq OR txns improved)
-  const hasImprovedLiq = liqImprovement >= 2;
-  const hasImprovedTxns = txImprovement >= 3;
-  const hasImproved = hasImprovedLiq || hasImprovedTxns;
-
-  if (!hasImproved && currentLiq < settings.minLiquidity) {
-    console.log(`❌ ${coin.symbol} no improvement - dumped`);
-    return { passes: false, reason: 'No improvement after 60s' };
-  }
-
-  // Liquidity check - but bypass if txns improved massively
-  if (currentLiq < settings.minLiquidity && !hasImprovedTxns) {
-    console.log(`❌ ${coin.symbol} liq too low ($${Math.round(currentLiq)})`);
-    return { passes: false, reason: `Low liq: $${Math.round(currentLiq)}` };
-  }
-
-  // Buy ratio check - at least 60% buys
-  if (buyRatio < 0.6 && currentTxns > 10) {
-    console.log(`❌ ${coin.symbol} bad buy ratio (${(buyRatio*100).toFixed(0)}%)`);
-    return { passes: false, reason: `Low buy ratio: ${(buyRatio*100).toFixed(0)}%` };
-  }
-
-  // Mint authority check
-  const hasMintAuth = connection ? await checkMintAuthority(coin.mintAddress, connection).catch(() => false) : false;
-  if (hasMintAuth) {
-    console.log(`⚠️ ${coin.symbol} has mint authority`);
-  }
-
-  // Score
-  let score = 5;
-  if (currentLiq > 50000) score += 2;
-  else if (currentLiq > 20000) score += 1;
-  else if (currentLiq > 7000) score += 0;
-  if (currentVolume > 10000) score += 1;
-  if (currentTxns > 50) score += 1;
-  if (buyRatio > 0.75) score += 1;
-  if (hasMintAuth) score -= 2;
-  if (priceChange > 10) score += 1;  // Bonus for positive momentum
-  if (priceChange > 30) score += 1;  // Extra bonus for strong momentum
-  if (liqImprovement >= 3 || txImprovement >= 3) score += 1;
-  if (coin.bondingProgress > 30) score += 1;
-  score = Math.max(1, Math.min(10, score));
-
-  // Update coin with latest data
-  coin.liquidityUSD = currentLiq;
-  coin.txnsH1 = currentTxns;
-  coin.buysH1 = currentBuys;
-  coin.sellsH1 = currentSells;
-  coin.volumeH1 = currentVolume;
-
-  const minScore = settings.minScore || 8;
-  console.log(`📈 ${coin.symbol} score: ${score}/10 | passes: ${score >= minScore}`);
+  console.log(`👀 ${coin.symbol} watching | liq:$${Math.round(coin.liquidityUSD)} | price:$${coin.priceUSD.toFixed(8)}`);
 
   return {
-    passes: score >= minScore && !hasMintAuth,
-    score,
-    hasMintAuth,
-    coin,
-    reason: score < (settings.minScore || 8) ? `Score: ${score}/10` : 'Passed ✅',
+    pass: true,
+    watchEntry: {
+      coin: { ...coin },
+      entryLiquidity: coin.liquidityUSD,
+      peakPrice: coin.priceUSD,
+      peakLiquidity: coin.liquidityUSD,
+      dipPrice: null,
+      dipLiquidity: null,
+      state: 'watching_pump', // watching_pump → dip_detected → recovering → BUY
+      lastChecked: Date.now(),
+      addedAt: Date.now(),
+    }
   };
+}
+
+// ==================== DIP WATCH: TRACK PRICE PATTERN ====================
+
+async function updateWatchEntry(mint, watch) {
+  const details = await fetchTokenDetails(mint);
+  if (!details || details.priceUSD <= 0) return { action: 'wait' };
+
+  const currentPrice = details.priceUSD;
+  const currentLiq = details.liquidityUSD || watch.coin.liquidityUSD;
+
+  // Update coin data
+  if (details.symbol && details.symbol !== 'UNKNOWN') watch.coin.symbol = details.symbol;
+  if (details.name) watch.coin.name = details.name;
+  if (details.url) watch.coin.url = details.url;
+  watch.coin.priceUSD = currentPrice;
+  watch.coin.liquidityUSD = currentLiq;
+  watch.coin.txnsH1 = details.txnsH1 || watch.coin.txnsH1;
+  watch.coin.buysH1 = details.buysH1 || watch.coin.buysH1;
+  watch.coin.sellsH1 = details.sellsH1 || watch.coin.sellsH1;
+  watch.coin.volumeH1 = details.volumeH1 || watch.coin.volumeH1;
+  watch.lastChecked = Date.now();
+
+  // RUG CHECK — liquidity dropped 30%+ from peak → abandon
+  const liqDropFromPeak = watch.peakLiquidity > 0
+    ? ((watch.peakLiquidity - currentLiq) / watch.peakLiquidity) * 100
+    : 0;
+
+  if (liqDropFromPeak > 30 && currentLiq < watch.entryLiquidity * 0.7) {
+    console.log(`🚨 ${watch.coin.symbol} RUG detected — liq dropped ${liqDropFromPeak.toFixed(0)}% — skip`);
+    return { action: 'dump' };
+  }
+
+  // Update peak
+  if (currentPrice > watch.peakPrice) {
+    watch.peakPrice = currentPrice;
+    watch.peakLiquidity = currentLiq;
+  }
+
+  const pumpFromBase = ((watch.peakPrice - watch.coin.priceUSD) / watch.coin.priceUSD) * 100;
+  const dropFromPeak = ((watch.peakPrice - currentPrice) / watch.peakPrice) * 100;
+  const initialPrice = watch.coin.priceUSD;
+  const pumpFromStart = watch.coin.priceUSD > 0 ? ((watch.peakPrice - initialPrice) / initialPrice) * 100 : 0;
+
+  if (watch.state === 'watching_pump') {
+    // Wait for 30%+ pump from launch price
+    const launchPrice = watch.entryLiquidity > 0 ? watch.coin.priceUSD : currentPrice;
+    const pumpedEnough = watch.peakPrice > 0 && pumpFromStart >= 30;
+
+    if (pumpedEnough) {
+      watch.state = 'dip_watch';
+      console.log(`📈 ${watch.coin.symbol} pumped ${pumpFromStart.toFixed(0)}% → now watching for dip`);
+    }
+    return { action: 'wait' };
+  }
+
+  if (watch.state === 'dip_watch') {
+    // Wait for 10-20% dip from peak
+    if (dropFromPeak >= 10 && dropFromPeak <= 35) {
+      watch.state = 'dip_detected';
+      watch.dipPrice = currentPrice;
+      watch.dipLiquidity = currentLiq;
+      watch.lowestDipPrice = currentPrice;
+      console.log(`📉 ${watch.coin.symbol} dipped ${dropFromPeak.toFixed(0)}% from peak → watching for recovery`);
+    } else if (dropFromPeak > 35) {
+      console.log(`❌ ${watch.coin.symbol} dipped too hard ${dropFromPeak.toFixed(0)}% — skip`);
+      return { action: 'dump' };
+    }
+    return { action: 'wait' };
+  }
+
+  if (watch.state === 'dip_detected') {
+    // Track lowest point of dip
+    if (currentPrice < watch.lowestDipPrice) {
+      watch.lowestDipPrice = currentPrice;
+      watch.dipLiquidity = currentLiq;
+    }
+
+    // Check for recovery — price needs to recover 5%+ from lowest point
+    const recoveryFromLow = watch.lowestDipPrice > 0
+      ? ((currentPrice - watch.lowestDipPrice) / watch.lowestDipPrice) * 100
+      : 0;
+
+    // Make sure liquidity is still healthy during recovery
+    const liqHealthy = liqDropFromPeak < 25;
+    const txnsActive = (watch.coin.txnsH1 || 0) >= 10;
+    const buyRatio = watch.coin.txnsH1 > 0 ? watch.coin.buysH1 / watch.coin.txnsH1 : 0;
+
+    console.log(`🔄 ${watch.coin.symbol} recovery: ${recoveryFromLow.toFixed(1)}% | liq ok:${liqHealthy} | txns:${watch.coin.txnsH1} | buyratio:${(buyRatio*100).toFixed(0)}%`);
+
+    if (recoveryFromLow >= 5 && liqHealthy && txnsActive) {
+      console.log(`✅ ${watch.coin.symbol} DIP BUY SIGNAL! pump:${pumpFromStart.toFixed(0)}% dip:${dropFromPeak.toFixed(0)}% recovery:${recoveryFromLow.toFixed(1)}%`);
+      return { action: 'buy', coin: watch.coin };
+    }
+
+    // If dip goes deeper than 35%, abandon
+    if (dropFromPeak > 35) {
+      console.log(`❌ ${watch.coin.symbol} dip too deep ${dropFromPeak.toFixed(0)}% — skip`);
+      return { action: 'dump' };
+    }
+
+    return { action: 'wait' };
+  }
+
+  return { action: 'wait' };
 }
 
 // ==================== MAIN FETCH ====================
 
 async function fetchNewTokens(maxAgeMins) {
   const now = Date.now();
+  const coinsReadyToBuy = [];
 
-  // Update ages and remove expired
+  // Update ages, remove expired
   newCoinQueue = newCoinQueue.filter(c => {
     c.ageMinutes = (now - c.launchTime) / 1000 / 60;
     return c.ageMinutes <= maxAgeMins;
   });
 
-  // Move coins ready for stage 1 (30+ seconds old) to processing
+  // Stage 1: Process new coins that are 30+ seconds old
   const readyForStage1 = newCoinQueue.filter(c => c.ageMinutes >= 0.5 && !watchlist[c.mintAddress]);
   newCoinQueue = newCoinQueue.filter(c => c.ageMinutes < 0.5 || watchlist[c.mintAddress]);
 
-  // Run stage 1 checks
   for (const coin of readyForStage1) {
     if (watchlist[coin.mintAddress]) continue;
     const result = await runStage1Check(coin);
     if (result.pass) {
-      watchlist[coin.mintAddress] = {
-        coin,
-        addedAt: Date.now(),
-        honeypot: result.honeypot,
-      };
+      watchlist[coin.mintAddress] = result.watchEntry;
     }
   }
 
-  // Check watchlist for stage 2 (60+ seconds since stage 1)
-  const readyForStage2 = Object.entries(watchlist).filter(([, w]) =>
-    (Date.now() - w.addedAt) >= 60000
-  );
-
-  // Remove expired from watchlist
-  for (const [mint, w] of Object.entries(watchlist)) {
-    const age = (now - w.coin.launchTime) / 1000 / 60;
-    if (age > maxAgeMins) {
+  // Remove expired watchlist entries
+  for (const [mint, watch] of Object.entries(watchlist)) {
+    const ageMins = (now - watch.addedAt) / 1000 / 60;
+    if (ageMins > maxAgeMins) {
+      console.log(`⏰ ${watch.coin.symbol} expired from watchlist (${ageMins.toFixed(0)}m)`);
       delete watchlist[mint];
     }
   }
 
-  // Return stage2-ready coins for analysis in bot/index.js
-  const coinsToAnalyze = [];
-  for (const [mint, w] of readyForStage2) {
-    delete watchlist[mint];
-    coinsToAnalyze.push({ ...w.coin, readyForStage2: true });
-  }
+  // Update all watchlist entries and check for buy signals
+  const watchEntries = Object.entries(watchlist);
+  for (const [mint, watch] of watchEntries) {
+    // Only check every 10 seconds per coin
+    if (now - watch.lastChecked < 10000) continue;
 
-  // Also add DexScreener coins as fallback
-  const dexCoins = await fetchDexScreenerCoins(maxAgeMins);
-  const watchMints = new Set([...Object.keys(watchlist), ...coinsToAnalyze.map(c => c.mintAddress)]);
-  for (const coin of dexCoins) {
-    if (!watchMints.has(coin.mintAddress)) {
-      coinsToAnalyze.push(coin);
+    const result = await updateWatchEntry(mint, watch);
+
+    if (result.action === 'buy') {
+      coinsReadyToBuy.push({ ...result.coin, readyForBuy: true });
+      delete watchlist[mint];
+    } else if (result.action === 'dump') {
+      delete watchlist[mint];
     }
+
+    // Small delay between checks
+    await new Promise(r => setTimeout(r, 300));
   }
 
-  if (coinsToAnalyze.length > 0) {
-    console.log(`🔎 ${coinsToAnalyze.length} coins ready | 📋 watchlist: ${Object.keys(watchlist).length} | 🆕 queue: ${newCoinQueue.length}`);
+  if (watchEntries.length > 0 || coinsReadyToBuy.length > 0) {
+    console.log(`👁️ watching:${Object.keys(watchlist).length} | 🛒 ready:${coinsReadyToBuy.length} | 🆕 queue:${newCoinQueue.length} | 🔌 WS:${wsConnected ? 'on' : 'off'}`);
   }
 
-  return coinsToAnalyze;
+  return coinsReadyToBuy;
 }
 
-async function fetchDexScreenerCoins(maxAgeMins) {
-  const urls = [
-    'https://api.dexscreener.com/latest/dex/search?q=pumpswap&chainIds=solana',
-    'https://api.dexscreener.com/latest/dex/search?q=pump.fun&chainIds=solana',
-  ];
-
-  const coins = [];
-  const seen = new Set();
-  const now = Date.now();
-
-  for (const url of urls) {
-    try {
-      const response = await axios.get(url, { timeout: 8000, headers: { 'User-Agent': 'Mozilla/5.0' } });
-      const pairs = response.data?.pairs || [];
-      pairs.sort((a, b) => b.pairCreatedAt - a.pairCreatedAt);
-
-      for (const pair of pairs) {
-        const mint = pair.baseToken?.address;
-        if (!mint || SKIP_MINTS.has(mint) || seen.has(mint)) continue;
-        const age = (now - pair.pairCreatedAt) / 1000 / 60;
-        if (age < 0 || age > maxAgeMins) continue;
-        seen.add(mint);
-        coins.push({
-          mintAddress: mint,
-          symbol: pair.baseToken.symbol || 'UNKNOWN',
-          name: pair.baseToken.name || 'Unknown',
-          priceUSD: parseFloat(pair.priceUsd) || 0,
-          liquidityUSD: pair.liquidity?.usd || 0,
-          volumeH1: pair.volume?.h1 || 0,
-          priceChangeH1: pair.priceChange?.h1 || 0,
-          txnsH1: (pair.txns?.h1?.buys || 0) + (pair.txns?.h1?.sells || 0),
-          buysH1: pair.txns?.h1?.buys || 0,
-          sellsH1: pair.txns?.h1?.sells || 0,
-          ageMinutes: age,
-          url: pair.url || `https://dexscreener.com/solana/${mint}`,
-          dexId: pair.dexId || '',
-        });
-      }
-    } catch {}
-  }
-  return coins;
-}
-
-// ==================== STANDARD ANALYZE (for DexScreener coins) ====================
+// ==================== ANALYZE (for buy-ready coins) ====================
 
 async function analyzeCoin(coin, settings, connection) {
-  // Stage 2 coins use the enhanced check
-  if (coin.readyForStage2) {
-    return runStage2Check(coin, settings, connection);
+  // Coins from dip strategy are already vetted
+  if (coin.readyForBuy) {
+    const minScore = settings.minScore || 6;
+    const hasMintAuth = connection
+      ? await checkMintAuthority(coin.mintAddress, connection).catch(() => false)
+      : false;
+
+    if (hasMintAuth) {
+      console.log(`⚠️ ${coin.symbol} has mint authority — skip`);
+      return { passes: false, reason: 'Mint authority' };
+    }
+
+    // Score based on available data
+    let score = 6; // Base score — already passed dip strategy
+    if (coin.liquidityUSD > 20000) score += 1;
+    if (coin.liquidityUSD > 50000) score += 1;
+    if ((coin.txnsH1 || 0) > 50) score += 1;
+    const buyRatio = coin.txnsH1 > 0 ? coin.buysH1 / coin.txnsH1 : 0.5;
+    if (buyRatio > 0.65) score += 1;
+    score = Math.min(10, score);
+
+    console.log(`🛒 ${coin.symbol} DIP BUY | score:${score}/10 | liq:$${Math.round(coin.liquidityUSD)} | txns:${coin.txnsH1}`);
+
+    return {
+      passes: score >= minScore,
+      score,
+      hasMintAuth,
+      coin,
+      reason: 'Dip buy signal ✅',
+    };
   }
 
-  // Standard analysis for DexScreener coins
-  let tokenData = { ...coin };
-
-  if (tokenData.liquidityUSD < settings.minLiquidity) {
-    return { passes: false, reason: `Low liq: $${Math.round(tokenData.liquidityUSD)}` };
-  }
-
-  if (tokenData.ageMinutes > settings.maxAgeMins) {
-    return { passes: false, reason: `Too old: ${Math.round(tokenData.ageMinutes)}m` };
-  }
-
-  const honeypot = await checkHoneypot(coin.mintAddress).catch(() => ({ isHoneypot: false, sellTax: 0 }));
-  if (honeypot.isHoneypot) return { passes: false, reason: 'Honeypot' };
-  if (honeypot.sellTax > 10) return { passes: false, reason: `Sell tax: ${honeypot.sellTax}%` };
-
-  const hasMintAuth = connection ? await checkMintAuthority(coin.mintAddress, connection).catch(() => false) : false;
-
-  const buyRatio = tokenData.txnsH1 > 0 ? tokenData.buysH1 / tokenData.txnsH1 : 0.5;
-
-  let score = 5;
-  if (tokenData.liquidityUSD > 50000) score += 2;
-  else if (tokenData.liquidityUSD > 20000) score += 1;
-  if (tokenData.volumeH1 > 20000) score += 1;
-  if (tokenData.txnsH1 > 100) score += 1;
-  if (buyRatio > 0.65) score += 1;
-  if (hasMintAuth) score -= 2;
-  if (tokenData.priceChangeH1 > 30) score += 1;
-  score = Math.max(1, Math.min(10, score));
-
-  console.log(`📈 ${tokenData.symbol} score: ${score}/10`);
-
-  return {
-    passes: score >= (settings.minScore || 8) && !honeypot.isHoneypot,
-    score,
-    hasMintAuth,
-    honeypot,
-    coin: tokenData,
-    reason: score < (settings.minScore || 8) ? `Score: ${score}/10` : 'Passed',
-  };
+  // Fallback for any non-dip coins (shouldn't happen often)
+  return { passes: false, reason: 'Not a dip buy signal' };
 }
 
 // ==================== PRICE / SOL ====================
