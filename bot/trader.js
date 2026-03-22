@@ -49,16 +49,59 @@ function getConnection() { return connection; }
 function getWallet() { return wallet; }
 
 async function getSOLBalance() {
-  for (let i = 0; i < RPC_ENDPOINTS.length; i++) {
-    try {
-      const balance = await connection.getBalance(wallet.publicKey);
-      return balance / 1e9;
-    } catch (e) {
-      console.error(`Balance error (RPC ${currentRpcIndex}): ${e.message}`);
-      rotateRpc();
-    }
+  try {
+    const response = await axios.post(
+      RPC_ENDPOINTS[currentRpcIndex] || 'https://api.mainnet-beta.solana.com',
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'getBalance',
+        params: [wallet.publicKey.toString()]
+      },
+      { headers: { 'Content-Type': 'application/json' }, timeout: 10000 }
+    );
+    const lamports = response.data?.result?.value || 0;
+    return lamports / 1e9;
+  } catch (e) {
+    console.error('Balance error:', e.message);
+    return 0;
   }
-  return 0;
+}
+
+async function rpcCall(method, params) {
+  const url = RPC_ENDPOINTS[currentRpcIndex] || 'https://api.mainnet-beta.solana.com';
+  const response = await axios.post(url, {
+    jsonrpc: '2.0', id: 1, method, params
+  }, { headers: { 'Content-Type': 'application/json' }, timeout: 30000 });
+  if (response.data?.error) throw new Error(response.data.error.message);
+  return response.data?.result;
+}
+
+async function sendRawTransactionHttp(serializedTx) {
+  const encoded = Buffer.from(serializedTx).toString('base64');
+  const result = await rpcCall('sendTransaction', [encoded, {
+    skipPreflight: true,
+    encoding: 'base64',
+    maxRetries: 3,
+  }]);
+  if (!result) throw new Error('No transaction ID returned');
+  return result;
+}
+
+async function confirmTransactionHttp(txid, maxWaitMs = 30000) {
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    try {
+      const result = await rpcCall('getSignatureStatuses', [[txid]]);
+      const status = result?.value?.[0];
+      if (status?.confirmationStatus === 'confirmed' || status?.confirmationStatus === 'finalized') {
+        if (status.err) throw new Error(`TX failed: ${JSON.stringify(status.err)}`);
+        return true;
+      }
+    } catch {}
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  throw new Error('Transaction confirmation timeout');
 }
 
 async function executeTrade(action, mintAddress, amountSOL) {
@@ -98,13 +141,11 @@ async function executeTrade(action, mintAddress, amountSOL) {
         transaction.sign(wallet);
       }
 
-      const txid = await connection.sendRawTransaction(
-        transaction instanceof VersionedTransaction ? transaction.serialize() : transaction.serialize(),
-        { skipPreflight: true, maxRetries: 2 }
+      const txid = await sendRawTransactionHttp(
+        transaction instanceof VersionedTransaction ? transaction.serialize() : transaction.serialize()
       );
 
-      const confirmation = await connection.confirmTransaction(txid, 'confirmed');
-      if (confirmation.value?.err) throw new Error(`TX failed: ${JSON.stringify(confirmation.value.err)}`);
+      await confirmTransactionHttp(txid);
 
       console.log(`✅ ${action} confirmed: ${txid}`);
       return { success: true, txid };
