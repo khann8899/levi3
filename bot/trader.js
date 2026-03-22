@@ -6,23 +6,42 @@ const bs58 = require('bs58');
 let connection = null;
 let wallet = null;
 
+const RPC_ENDPOINTS = [
+  process.env.SOLANA_RPC_URL,
+  'https://api.mainnet-beta.solana.com',
+  'https://solana-api.projectserum.com',
+].filter(Boolean);
+
+let currentRpcIndex = 0;
+
+function createConnection(url) {
+  return new Connection(url, {
+    commitment: 'confirmed',
+    confirmTransactionInitialTimeout: 60000,
+    wsEndpoint: undefined, // Disable WebSocket to avoid fetch issues
+  });
+}
+
+function rotateRpc() {
+  currentRpcIndex = (currentRpcIndex + 1) % RPC_ENDPOINTS.length;
+  const url = RPC_ENDPOINTS[currentRpcIndex];
+  connection = createConnection(url);
+  console.log(`🔄 Switched RPC to: ${url.slice(0, 40)}...`);
+  return connection;
+}
+
 function init() {
-  const rpcUrl = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
-  connection = new Connection(rpcUrl, 'confirmed');
+  const rpcUrl = RPC_ENDPOINTS[0];
+  connection = createConnection(rpcUrl);
 
   const privateKey = process.env.WALLET_PRIVATE_KEY;
   if (!privateKey) throw new Error('WALLET_PRIVATE_KEY not set');
 
-  let decoded;
-try {
-  decoded = bs58.decode(privateKey);
-} catch {
-  const bs58Default = require('bs58');
-  decoded = bs58Default.default ? bs58Default.default.decode(privateKey) : bs58Default.decode(privateKey);
-}
-wallet = Keypair.fromSecretKey(new Uint8Array(decoded));
+  const decoded = bs58.decode(privateKey);
+  wallet = Keypair.fromSecretKey(new Uint8Array(decoded));
 
   console.log(`✅ Wallet: ${wallet.publicKey.toString()}`);
+  console.log(`🌐 RPC: ${rpcUrl.slice(0, 40)}...`);
   return { connection, wallet };
 }
 
@@ -30,13 +49,16 @@ function getConnection() { return connection; }
 function getWallet() { return wallet; }
 
 async function getSOLBalance() {
-  try {
-    const balance = await connection.getBalance(wallet.publicKey);
-    return balance / 1e9;
-  } catch (e) {
-    console.error('Balance error:', e.message);
-    return 0;
+  for (let i = 0; i < RPC_ENDPOINTS.length; i++) {
+    try {
+      const balance = await connection.getBalance(wallet.publicKey);
+      return balance / 1e9;
+    } catch (e) {
+      console.error(`Balance error (RPC ${currentRpcIndex}): ${e.message}`);
+      rotateRpc();
+    }
   }
+  return 0;
 }
 
 async function executeTrade(action, mintAddress, amountSOL) {

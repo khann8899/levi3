@@ -211,16 +211,18 @@ async function runStage2Check(coin, settings, connection) {
 
   console.log(`🔬 ${coin.symbol} stage2 | liq:$${Math.round(currentLiq)}(${liqImprovement.toFixed(1)}x) | txns:${currentTxns}(${txImprovement.toFixed(1)}x) | buyratio:${(buyRatio*100).toFixed(0)}%`);
 
-  // Check 3x improvement requirement
-  const hasImproved = liqImprovement >= 2 || txImprovement >= 2;
+  // Check improvement requirement - OR logic (either liq OR txns improved)
+  const hasImprovedLiq = liqImprovement >= 2;
+  const hasImprovedTxns = txImprovement >= 3;
+  const hasImproved = hasImprovedLiq || hasImprovedTxns;
 
   if (!hasImproved && currentLiq < settings.minLiquidity) {
     console.log(`❌ ${coin.symbol} no improvement - dumped`);
     return { passes: false, reason: 'No improvement after 60s' };
   }
 
-  // Liquidity check
-  if (currentLiq < settings.minLiquidity) {
+  // Liquidity check - but bypass if txns improved massively
+  if (currentLiq < settings.minLiquidity && !hasImprovedTxns) {
     console.log(`❌ ${coin.symbol} liq too low ($${Math.round(currentLiq)})`);
     return { passes: false, reason: `Low liq: $${Math.round(currentLiq)}` };
   }
@@ -257,10 +259,11 @@ async function runStage2Check(coin, settings, connection) {
   coin.sellsH1 = currentSells;
   coin.volumeH1 = currentVolume;
 
-  console.log(`📈 ${coin.symbol} score: ${score}/10 | passes: ${score >= settings.minScore || 8}`);
+  const minScore = settings.minScore || 8;
+  console.log(`📈 ${coin.symbol} score: ${score}/10 | passes: ${score >= minScore}`);
 
   return {
-    passes: score >= (settings.minScore || 8) && !hasMintAuth,
+    passes: score >= minScore && !hasMintAuth,
     score,
     hasMintAuth,
     coin,
