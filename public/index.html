@@ -8,103 +8,51 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   :root {
-    --bg: #0a0a0f;
-    --surface: #13131a;
-    --surface2: #1c1c26;
-    --border: #2a2a3a;
-    --accent: #6c63ff;
-    --accent2: #4ade80;
-    --red: #f87171;
-    --yellow: #fbbf24;
-    --text: #e2e8f0;
-    --text2: #94a3b8;
+    --bg: #0a0a0f; --surface: #13131a; --surface2: #1c1c26;
+    --border: #2a2a3a; --accent: #6c63ff; --accent2: #4ade80;
+    --red: #f87171; --yellow: #fbbf24; --text: #e2e8f0; --text2: #94a3b8;
     --radius: 12px;
   }
   body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
 
-  /* LOGIN */
-  #login-screen {
-    display: flex; align-items: center; justify-content: center;
-    min-height: 100vh; padding: 20px;
-  }
-  .login-box {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 40px; width: 100%; max-width: 380px;
-  }
+  #login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+  .login-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 40px; width: 100%; max-width: 380px; }
   .login-box h1 { font-size: 24px; margin-bottom: 8px; }
   .login-box p { color: var(--text2); margin-bottom: 28px; font-size: 14px; }
   .input-group { margin-bottom: 16px; }
   .input-group label { display: block; font-size: 13px; color: var(--text2); margin-bottom: 6px; }
-  .input-group input {
-    width: 100%; padding: 10px 14px; background: var(--surface2);
-    border: 1px solid var(--border); border-radius: 8px; color: var(--text);
-    font-size: 14px; outline: none; transition: border-color 0.2s;
-  }
+  .input-group input { width: 100%; padding: 10px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; outline: none; }
   .input-group input:focus { border-color: var(--accent); }
-  .btn {
-    width: 100%; padding: 11px; background: var(--accent); color: white;
-    border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
-    cursor: pointer; transition: opacity 0.2s;
-  }
-  .btn:hover { opacity: 0.9; }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn { width: 100%; padding: 11px; background: var(--accent); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn:disabled { opacity: 0.5; }
   .error-msg { color: var(--red); font-size: 13px; margin-top: 12px; text-align: center; }
 
-  /* MAIN APP */
   #app { display: none; }
-  .header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 20px; background: var(--surface); border-bottom: 1px solid var(--border);
-    position: sticky; top: 0; z-index: 100;
-  }
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; flex-wrap: wrap; gap: 8px; }
   .header-left { display: flex; align-items: center; gap: 12px; }
   .logo { font-size: 18px; font-weight: 700; }
-  .status-dot {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: var(--red); transition: background 0.3s;
-  }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
   .status-dot.active { background: var(--accent2); }
-  .header-right { display: flex; align-items: center; gap: 12px; }
+  .header-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .balance-display { font-size: 13px; color: var(--text2); }
   .balance-display span { color: var(--text); font-weight: 600; }
-  .btn-sm {
-    padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
-    border: none; cursor: pointer; transition: opacity 0.2s;
-  }
-  .btn-sm:hover { opacity: 0.85; }
+  .btn-sm { padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; }
   .btn-start { background: var(--accent2); color: #0a0a0f; }
   .btn-stop { background: var(--red); color: white; }
   .btn-logout { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
 
-  /* TABS */
-  .tabs {
-    display: flex; gap: 4px; padding: 16px 20px 0;
-    border-bottom: 1px solid var(--border); background: var(--surface);
-  }
-  .tab {
-    padding: 8px 16px; border-radius: 8px 8px 0 0; font-size: 13px; font-weight: 600;
-    cursor: pointer; color: var(--text2); border: 1px solid transparent;
-    border-bottom: none; transition: all 0.2s;
-  }
-  .tab.active {
-    color: var(--text); background: var(--bg);
-    border-color: var(--border);
-  }
+  .tabs { display: flex; gap: 4px; padding: 16px 20px 0; border-bottom: 1px solid var(--border); background: var(--surface); overflow-x: auto; }
+  .tab { padding: 8px 16px; border-radius: 8px 8px 0 0; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text2); border: 1px solid transparent; border-bottom: none; white-space: nowrap; }
+  .tab.active { color: var(--text); background: var(--bg); border-color: var(--border); }
 
-  /* CONTENT */
   .content { padding: 20px; max-width: 1200px; margin: 0 auto; }
   .tab-content { display: none; }
   .tab-content.active { display: block; }
 
-  /* CARDS */
-  .card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
-  }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
   .card-title { font-size: 13px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 16px; }
 
-  /* STATS ROW */
-  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
   .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
   .stat-label { font-size: 12px; color: var(--text2); margin-bottom: 6px; }
   .stat-value { font-size: 22px; font-weight: 700; }
@@ -112,23 +60,13 @@
   .stat-value.red { color: var(--red); }
   .stat-value.purple { color: var(--accent); }
 
-  /* CHART */
   .chart-container { position: relative; height: 200px; margin-bottom: 8px; }
   .chart-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
-  .chart-tab {
-    padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;
-    cursor: pointer; background: var(--surface2); color: var(--text2);
-    border: 1px solid var(--border);
-  }
+  .chart-tab { padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
   .chart-tab.active { background: var(--accent); color: white; border-color: var(--accent); }
 
-  /* POSITIONS */
   .positions-list { display: flex; flex-direction: column; gap: 10px; }
-  .position-item {
-    background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 10px; padding: 14px 16px;
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  }
+  .position-item { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .position-item.paper { border-left: 3px solid var(--yellow); }
   .position-item.real { border-left: 3px solid var(--accent); }
   .pos-left { flex: 1; }
@@ -139,18 +77,11 @@
   .pos-pnl.positive { color: var(--accent2); }
   .pos-pnl.negative { color: var(--red); }
   .pos-price { font-size: 12px; color: var(--text2); margin-top: 2px; }
-  .pos-badge {
-    font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px;
-    text-transform: uppercase; letter-spacing: 0.05em;
-  }
+  .pos-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; }
   .pos-badge.paper { background: rgba(251,191,36,0.15); color: var(--yellow); }
   .pos-badge.real { background: rgba(108,99,255,0.15); color: var(--accent); }
 
-  /* HISTORY */
-  .history-item {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 0; border-bottom: 1px solid var(--border);
-  }
+  .history-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
   .history-item:last-child { border-bottom: none; }
   .history-left { flex: 1; }
   .history-symbol { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
@@ -160,65 +91,37 @@
   .history-reason { font-size: 11px; color: var(--text2); margin-top: 2px; }
   .empty-state { text-align: center; padding: 40px; color: var(--text2); font-size: 14px; }
 
-  /* SETTINGS */
   .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   @media (max-width: 600px) { .settings-grid { grid-template-columns: 1fr; } }
   .settings-section { background: var(--surface2); border-radius: 10px; padding: 16px; }
-  .settings-section h3 { font-size: 14px; font-weight: 700; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .settings-section h3 { font-size: 14px; font-weight: 700; margin-bottom: 14px; }
   .setting-row { margin-bottom: 14px; }
-  .setting-row:last-child { margin-bottom: 0; }
-  .setting-label { font-size: 12px; color: var(--text2); margin-bottom: 5px; display: flex; justify-content: space-between; }
-  .setting-input {
-    width: 100%; padding: 8px 12px; background: var(--surface);
-    border: 1px solid var(--border); border-radius: 8px; color: var(--text);
-    font-size: 14px; outline: none;
-  }
+  .setting-label { font-size: 12px; color: var(--text2); margin-bottom: 5px; }
+  .setting-input { width: 100%; padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; outline: none; }
   .setting-input:focus { border-color: var(--accent); }
   .toggle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
   .toggle-label { font-size: 13px; font-weight: 600; }
-  .toggle {
-    width: 44px; height: 24px; background: var(--border); border-radius: 12px;
-    cursor: pointer; position: relative; transition: background 0.2s;
-  }
+  .toggle { width: 44px; height: 24px; background: var(--border); border-radius: 12px; cursor: pointer; position: relative; }
   .toggle.on { background: var(--accent2); }
-  .toggle::after {
-    content: ''; position: absolute; width: 18px; height: 18px;
-    background: white; border-radius: 50%; top: 3px; left: 3px; transition: left 0.2s;
-  }
+  .toggle::after { content: ''; position: absolute; width: 18px; height: 18px; background: white; border-radius: 50%; top: 3px; left: 3px; transition: left 0.2s; }
   .toggle.on::after { left: 23px; }
-  .save-btn {
-    width: 100%; padding: 10px; background: var(--accent); color: white;
-    border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
-    cursor: pointer; margin-top: 16px; transition: opacity 0.2s;
-  }
-  .save-btn:hover { opacity: 0.9; }
+  .save-btn { width: 100%; padding: 10px; background: var(--accent); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 16px; }
   .save-success { color: var(--accent2); font-size: 13px; text-align: center; margin-top: 8px; display: none; }
 
-  /* FEED */
-  .feed-item {
-    padding: 10px 14px; background: var(--surface2); border-radius: 8px;
-    margin-bottom: 8px; font-size: 13px; border-left: 3px solid var(--border);
-  }
+  .feed-item { padding: 10px 14px; background: var(--surface2); border-radius: 8px; margin-bottom: 8px; font-size: 13px; border-left: 3px solid var(--border); }
   .feed-item.win { border-left-color: var(--accent2); }
   .feed-item.loss { border-left-color: var(--red); }
   .feed-item.open { border-left-color: var(--accent); }
   .feed-time { font-size: 11px; color: var(--text2); margin-top: 3px; }
 
-  /* RESPONSIVE */
-  @media (max-width: 600px) {
-    .header { padding: 12px 16px; }
-    .content { padding: 12px; }
-    .tabs { padding: 12px 16px 0; overflow-x: auto; }
-    .stats-grid { grid-template-columns: 1fr 1fr; }
-  }
+  @media (max-width: 600px) { .header { padding: 12px 16px; } .content { padding: 12px; } .stats-grid { grid-template-columns: 1fr 1fr; } }
 </style>
 </head>
 <body>
 
-<!-- LOGIN -->
 <div id="login-screen">
   <div class="login-box">
-    <h1>🤖 Levi 3</h1>
+    <h1>⚡ Levi 3</h1>
     <p>Solana Memecoin Sniper</p>
     <div class="input-group">
       <label>Username</label>
@@ -233,7 +136,6 @@
   </div>
 </div>
 
-<!-- MAIN APP -->
 <div id="app">
   <div class="header">
     <div class="header-left">
@@ -257,186 +159,96 @@
 
   <div class="content">
 
-    <!-- DASHBOARD -->
     <div class="tab-content active" id="tab-dashboard">
       <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">Real Balance</div>
-          <div class="stat-value purple" id="stat-real-balance">$—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Paper Balance</div>
-          <div class="stat-value" id="stat-paper-balance">$—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Open Positions</div>
-          <div class="stat-value" id="stat-positions">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">SOL Price</div>
-          <div class="stat-value" id="stat-sol-price">$—</div>
-        </div>
+        <div class="stat-card"><div class="stat-label">Real Balance</div><div class="stat-value purple" id="stat-real-balance">$—</div></div>
+        <div class="stat-card"><div class="stat-label">Paper Balance</div><div class="stat-value" id="stat-paper-balance">$—</div></div>
+        <div class="stat-card"><div class="stat-label">Open Positions</div><div class="stat-value" id="stat-positions">—</div></div>
+        <div class="stat-card"><div class="stat-label">SOL Price</div><div class="stat-value" id="stat-sol-price">$—</div></div>
       </div>
-
       <div class="card">
         <div class="chart-tabs">
           <div class="chart-tab active" onclick="switchChart('real')">Real Balance</div>
           <div class="chart-tab" onclick="switchChart('paper')">Paper Balance</div>
         </div>
-        <div class="chart-container">
-          <canvas id="balance-chart"></canvas>
-        </div>
+        <div class="chart-container"><canvas id="balance-chart"></canvas></div>
       </div>
-
       <div class="card">
         <div class="card-title">Live Feed</div>
-        <div id="live-feed">
-          <div class="empty-state">Bot events will appear here...</div>
-        </div>
+        <div id="live-feed"><div class="empty-state">Bot events will appear here...</div></div>
       </div>
     </div>
 
-    <!-- POSITIONS -->
     <div class="tab-content" id="tab-positions">
       <div class="card">
         <div class="card-title">Open Positions</div>
-        <div id="positions-list" class="positions-list">
-          <div class="empty-state">No open positions</div>
-        </div>
+        <div id="positions-list" class="positions-list"><div class="empty-state">No open positions</div></div>
       </div>
     </div>
 
-    <!-- HISTORY -->
     <div class="tab-content" id="tab-history">
       <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">Total Trades</div>
-          <div class="stat-value" id="hist-total">0</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Win Rate</div>
-          <div class="stat-value green" id="hist-winrate">0%</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Net P&L</div>
-          <div class="stat-value" id="hist-pnl">$0</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Best Trade</div>
-          <div class="stat-value green" id="hist-best">0x</div>
-        </div>
+        <div class="stat-card"><div class="stat-label">Total Trades</div><div class="stat-value" id="hist-total">0</div></div>
+        <div class="stat-card"><div class="stat-label">Win Rate</div><div class="stat-value green" id="hist-winrate">0%</div></div>
+        <div class="stat-card"><div class="stat-label">Net P&L</div><div class="stat-value" id="hist-pnl">$0</div></div>
+        <div class="stat-card"><div class="stat-label">Best Trade</div><div class="stat-value green" id="hist-best">0x</div></div>
       </div>
       <div class="card">
-        <div class="card-title">Last 7 Days</div>
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+          <span>Last 7 Days</span>
+          <button onclick="clearHistory()" style="background:var(--red);color:white;border:none;border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer">Clear History</button>
+        </div>
         <div id="history-list"></div>
       </div>
     </div>
 
-    <!-- SETTINGS -->
     <div class="tab-content" id="tab-settings">
       <div class="settings-grid">
-        <!-- REAL SETTINGS -->
         <div class="settings-section">
           <h3>💰 Real Trading</h3>
-          <div class="toggle-row">
-            <span class="toggle-label">Enabled</span>
-            <div class="toggle" id="real-toggle" onclick="toggleSetting('real')"></div>
-          </div>
+          <div class="toggle-row"><span class="toggle-label">Enabled</span><div class="toggle" id="real-toggle" onclick="toggleSetting('real')"></div></div>
+          <div class="setting-row"><div class="setting-label">Bet Size (USD)</div><input class="setting-input" type="number" id="real-betSize" /></div>
+          <div class="setting-row"><div class="setting-label">Max Open Slots</div><input class="setting-input" type="number" id="real-maxSlots" /></div>
+          <div class="setting-row"><div class="setting-label">Min Liquidity ($)</div><input class="setting-input" type="number" id="real-minLiquidity" /></div>
+          <div class="setting-row"><div class="setting-label">Min Score (1-10)</div><input class="setting-input" type="number" id="real-minScore" min="1" max="10" /></div>
+          <div class="setting-row"><div class="setting-label">Max Coin Age (mins)</div><input class="setting-input" type="number" id="real-maxAgeMins" /></div>
+          <div class="setting-row"><div class="setting-label">Max Hold Time (mins)</div><input class="setting-input" type="number" id="real-maxHoldMins" /></div>
           <div class="setting-row">
-            <div class="setting-label"><span>Bet Size (USD)</span></div>
-            <input class="setting-input" type="number" id="real-betSize" placeholder="2" />
-          </div>
-          <div class="setting-row">
-            <div class="setting-label"><span>Max Open Slots</span></div>
-            <input class="setting-input" type="number" id="real-maxSlots" placeholder="3" />
-          </div>
-          <div class="setting-row">
-            <div class="setting-label"><span>Min Liquidity ($)</span></div>
-            <input class="setting-input" type="number" id="real-minLiquidity" placeholder="10000" />
-          </div>
-          <div class="setting-row">
-            <div class="setting-label"><span>Min Score (1-10)</span></div>
-            <input class="setting-input" type="number" id="real-minScore" placeholder="8" min="1" max="10" />
-          </div>
-          <div class="setting-row">
-            <div class="setting-label"><span>Max Coin Age (mins)</span></div>
-            <input class="setting-input" type="number" id="real-maxAgeMins" placeholder="15" />
-          </div>
-          <div class="setting-row">
-            <div class="setting-label" style="margin-bottom:8px">
+            <div class="setting-label" style="display:flex;justify-content:space-between">
               <span>Take Profit Points</span>
               <button onclick="addTP('real')" style="background:var(--accent);color:white;border:none;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer">+ Add</button>
             </div>
             <div id="real-tps"></div>
           </div>
-          <div class="setting-row">
-            <div class="setting-label"><span>Max Hold Time (mins)</span></div>
-            <input class="setting-input" type="number" id="real-maxHoldMins" placeholder="20" />
-          </div>
-          <div class="setting-row">
-            <div class="setting-label"><span>Stop Loss (%)</span></div>
-            <input class="setting-input" type="number" id="real-stopLossPercent" placeholder="25" />
-          </div>
-          <div class="setting-row">
-            <div class="setting-label"><span>Trailing Stop (%) — activates at 1.5x</span></div>
-            <input class="setting-input" type="number" id="real-trailingStopPercent" placeholder="20" />
-          </div>
+          <div class="setting-row"><div class="setting-label">Stop Loss (%)</div><input class="setting-input" type="number" id="real-stopLossPercent" /></div>
+          <div class="setting-row"><div class="setting-label">Trailing Stop (%) — activates at 1.5x</div><input class="setting-input" type="number" id="real-trailingStopPercent" /></div>
         </div>
 
-        <!-- PAPER SETTINGS -->
         <div class="settings-section">
           <h3>📝 Paper Trading</h3>
-          <div class="toggle-row">
-            <span class="toggle-label">Enabled</span>
-            <div class="toggle" id="paper-toggle" onclick="toggleSetting('paper')"></div>
-          </div>
+          <div class="toggle-row"><span class="toggle-label">Enabled</span><div class="toggle" id="paper-toggle" onclick="toggleSetting('paper')"></div></div>
           <div class="setting-row">
-            <div class="setting-label"><span>Paper Balance ($)</span></div>
-            <input class="setting-input" type="number" id="paper-balance" placeholder="100" />
+            <div class="setting-label">Paper Balance ($) — read only</div>
+            <input class="setting-input" type="number" id="paper-balance" readonly style="opacity:0.6;cursor:not-allowed" />
           </div>
+          <div class="setting-row"><div class="setting-label">Bet Size (USD)</div><input class="setting-input" type="number" id="paper-betSize" /></div>
+          <div class="setting-row"><div class="setting-label">Max Open Slots</div><input class="setting-input" type="number" id="paper-maxSlots" /></div>
+          <div class="setting-row"><div class="setting-label">Min Liquidity ($)</div><input class="setting-input" type="number" id="paper-minLiquidity" /></div>
+          <div class="setting-row"><div class="setting-label">Min Score (1-10)</div><input class="setting-input" type="number" id="paper-minScore" min="1" max="10" /></div>
+          <div class="setting-row"><div class="setting-label">Max Coin Age (mins)</div><input class="setting-input" type="number" id="paper-maxAgeMins" /></div>
+          <div class="setting-row"><div class="setting-label">Max Hold Time (mins)</div><input class="setting-input" type="number" id="paper-maxHoldMins" /></div>
           <div class="setting-row">
-            <div class="setting-label"><span>Bet Size (USD)</span></div>
-            <input class="setting-input" type="number" id="paper-betSize" placeholder="2" />
-          </div>
-          <div class="setting-row">
-            <div class="setting-label"><span>Max Open Slots</span></div>
-            <input class="setting-input" type="number" id="paper-maxSlots" placeholder="3" />
-          </div>
-          <div class="setting-row">
-            <div class="setting-label"><span>Min Liquidity ($)</span></div>
-            <input class="setting-input" type="number" id="paper-minLiquidity" placeholder="10000" />
-          </div>
-          <div class="setting-row">
-            <div class="setting-label"><span>Min Score (1-10)</span></div>
-            <input class="setting-input" type="number" id="paper-minScore" placeholder="8" min="1" max="10" />
-          </div>
-          <div class="setting-row">
-            <div class="setting-label"><span>Max Coin Age (mins)</span></div>
-            <input class="setting-input" type="number" id="paper-maxAgeMins" placeholder="15" />
-          </div>
-          <div class="setting-row">
-            <div class="setting-label" style="margin-bottom:8px">
+            <div class="setting-label" style="display:flex;justify-content:space-between">
               <span>Take Profit Points</span>
               <button onclick="addTP('paper')" style="background:var(--accent);color:white;border:none;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer">+ Add</button>
             </div>
             <div id="paper-tps"></div>
           </div>
-          <div class="setting-row">
-            <div class="setting-label"><span>Max Hold Time (mins)</span></div>
-            <input class="setting-input" type="number" id="paper-maxHoldMins" placeholder="20" />
-          </div>
-          <div class="setting-row">
-            <div class="setting-label"><span>Stop Loss (%)</span></div>
-            <input class="setting-input" type="number" id="paper-stopLossPercent" placeholder="25" />
-          </div>
-          <div class="setting-row">
-            <div class="setting-label"><span>Trailing Stop (%) — activates at 1.5x</span></div>
-            <input class="setting-input" type="number" id="paper-trailingStopPercent" placeholder="20" />
-          </div>
+          <div class="setting-row"><div class="setting-label">Stop Loss (%)</div><input class="setting-input" type="number" id="paper-stopLossPercent" /></div>
+          <div class="setting-row"><div class="setting-label">Trailing Stop (%) — activates at 1.5x</div><input class="setting-input" type="number" id="paper-trailingStopPercent" /></div>
           <button class="btn-sm btn-stop" style="width:100%;margin-top:8px" onclick="resetPaper()">Reset Paper Balance</button>
         </div>
       </div>
-
       <button class="save-btn" onclick="saveSettings()">Save Settings</button>
       <div class="save-success" id="save-success">✅ Settings saved!</div>
     </div>
@@ -452,58 +264,6 @@ let currentChartMode = 'real';
 let botActive = false;
 let settingsState = { real: { enabled: false }, paper: { enabled: true } };
 
-// ==================== TP MANAGEMENT ====================
-
-function renderTPs(mode, tps) {
-  const container = document.getElementById(`${mode}-tps`);
-  container.innerHTML = '';
-  (tps || []).forEach((tp, i) => {
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:center';
-    row.innerHTML = `
-      <input class="setting-input" type="number" placeholder="Growth %" value="${tp.percent}"
-        id="${mode}-tp-percent-${i}" style="flex:1" />
-      <span style="color:var(--text2);font-size:13px">% →</span>
-      <input class="setting-input" type="number" placeholder="Sell %" value="${tp.sellPercent}"
-        id="${mode}-tp-sell-${i}" style="flex:1" />
-      <span style="color:var(--text2);font-size:13px">%</span>
-      <button onclick="removeTP('${mode}', ${i})"
-        style="background:var(--red);color:white;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px">✕</button>
-    `;
-    container.appendChild(row);
-  });
-  // Show hint
-  if (!tps || tps.length === 0) {
-    container.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:4px 0">No TPs — trailing stop only</div>';
-  }
-}
-
-function addTP(mode) {
-  const tps = getTPs(mode);
-  tps.push({ percent: 55, sellPercent: 50 });
-  renderTPs(mode, tps);
-}
-
-function removeTP(mode, index) {
-  const tps = getTPs(mode);
-  tps.splice(index, 1);
-  renderTPs(mode, tps);
-}
-
-function getTPs(mode) {
-  const container = document.getElementById(`${mode}-tps`);
-  const tps = [];
-  let i = 0;
-  while (document.getElementById(`${mode}-tp-percent-${i}`)) {
-    tps.push({
-      percent: parseFloat(document.getElementById(`${mode}-tp-percent-${i}`).value) || 55,
-      sellPercent: parseFloat(document.getElementById(`${mode}-tp-sell-${i}`).value) || 50,
-    });
-    i++;
-  }
-  return tps;
-}
-
 // ==================== AUTH ====================
 
 async function login() {
@@ -511,24 +271,15 @@ async function login() {
   const password = document.getElementById('login-password').value;
   const btn = document.getElementById('login-btn');
   const err = document.getElementById('login-error');
-
-  btn.disabled = true;
-  err.textContent = '';
-
+  btn.disabled = true; err.textContent = '';
   try {
-    const res = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    });
+    const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     token = data.token;
     localStorage.setItem('levi3_token', token);
     showApp();
-  } catch (e) {
-    err.textContent = e.message || 'Login failed';
-  }
+  } catch (e) { err.textContent = e.message || 'Login failed'; }
   btn.disabled = false;
 }
 
@@ -541,10 +292,7 @@ function logout() {
 }
 
 async function api(path, method = 'GET', body = null) {
-  const opts = {
-    method,
-    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
-  };
+  const opts = { method, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(path, opts);
   if (res.status === 401) { logout(); return null; }
@@ -568,31 +316,17 @@ async function showApp() {
 function connectWebSocket() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${proto}//${location.host}?token=${token}`);
-
-  ws.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      handleWSMessage(data);
-    } catch {}
-  };
-
-  ws.onclose = () => {
-    // Reconnect after 5 seconds, not immediately
-    setTimeout(connectWebSocket, 5000);
-  };
-
-  ws.onerror = () => {
-    ws.close();
-  };
+  ws.onmessage = (e) => { try { handleWSMessage(JSON.parse(e.data)); } catch {} };
+  ws.onclose = () => setTimeout(connectWebSocket, 5000);
+  ws.onerror = () => ws.close();
 }
 
 function handleWSMessage(data) {
-  if (data.type === 'positions_update') {
-    renderPositions(data.positions);
-  } else if (data.type === 'position_opened' || data.type === 'position_closed') {
-    addFeedItem(data.message, data.type === 'position_closed' ? (data.trade?.pnlUSD > 0 ? 'win' : 'loss') : 'open');
-    loadHistory();
-    loadStatus();
+  if (data.type === 'positions_update') renderPositions(data.positions);
+  else if (data.type === 'position_opened') { addFeedItem(data.message, 'open'); loadStatus(); }
+  else if (data.type === 'position_closed') {
+    addFeedItem(data.message, data.trade?.pnlUSD > 0 ? 'win' : 'loss');
+    loadHistory(); loadStatus();
   }
 }
 
@@ -601,35 +335,23 @@ function handleWSMessage(data) {
 async function loadStatus() {
   const data = await api('/api/status');
   if (!data) return;
-
   botActive = data.botActive;
-  const dot = document.getElementById('status-dot');
-  const text = document.getElementById('status-text');
+  document.getElementById('status-dot').className = 'status-dot' + (botActive ? ' active' : '');
+  document.getElementById('status-text').textContent = botActive ? 'Running' : 'Stopped';
   const btn = document.getElementById('toggle-bot-btn');
-
-  dot.className = 'status-dot' + (botActive ? ' active' : '');
-  text.textContent = botActive ? 'Running' : 'Stopped';
   btn.textContent = botActive ? 'Stop Bot' : 'Start Bot';
   btn.className = 'btn-sm ' + (botActive ? 'btn-stop' : 'btn-start');
-
-  document.getElementById('header-sol').textContent = `$${data.usdBalance?.toFixed(2) || '—'}`;
-  document.getElementById('header-paper').textContent = `$${data.paperBalance?.toFixed(2) || '—'}`;
-  document.getElementById('stat-real-balance').textContent = `$${data.usdBalance?.toFixed(2) || '—'}`;
-  document.getElementById('stat-paper-balance').textContent = `$${data.paperBalance?.toFixed(2) || '—'}`;
-  document.getElementById('stat-positions').textContent = (data.realPositions || 0) + (data.paperPositions || 0);
-  document.getElementById('stat-sol-price').textContent = `$${data.solPrice?.toFixed(2) || '—'}`;
-
-  // Update chart
+  document.getElementById('header-sol').textContent = `$${(data.usdBalance || 0).toFixed(2)}`;
+  document.getElementById('header-paper').textContent = `$${(data.paperBalance || 0).toFixed(2)}`;
+  document.getElementById('stat-real-balance').textContent = `$${(data.usdBalance || 0).toFixed(2)}`;
+  document.getElementById('stat-paper-balance').textContent = `$${(data.paperBalance || 0).toFixed(2)}`;
+  document.getElementById('stat-sol-price').textContent = `$${(data.solPrice || 0).toFixed(2)}`;
   const balHistory = await api('/api/balance-history');
   if (balHistory) updateChart(balHistory);
 }
 
 async function toggleBot() {
-  if (botActive) {
-    await api('/api/bot/stop', 'POST');
-  } else {
-    await api('/api/bot/start', 'POST');
-  }
+  await api(botActive ? '/api/bot/stop' : '/api/bot/start', 'POST');
   await loadStatus();
 }
 
@@ -640,22 +362,14 @@ function initChart() {
   balanceChart = new Chart(ctx, {
     type: 'line',
     data: { labels: [], datasets: [{ label: 'Balance', data: [], borderColor: '#6c63ff', backgroundColor: 'rgba(108,99,255,0.08)', fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2 }] },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { display: false },
-        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8', callback: v => '$' + v.toFixed(0) } }
-      }
-    }
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8', callback: v => '$' + v.toFixed(0) } } } }
   });
 }
 
 function updateChart(balHistory) {
-  const data = balHistory[currentChartMode] || [];
-  const last100 = data.slice(-100);
-  balanceChart.data.labels = last100.map(d => new Date(d.time).toLocaleTimeString());
-  balanceChart.data.datasets[0].data = last100.map(d => d.balance);
+  const data = (balHistory[currentChartMode] || []).slice(-100);
+  balanceChart.data.labels = data.map(d => new Date(d.time).toLocaleTimeString());
+  balanceChart.data.datasets[0].data = data.map(d => d.balance);
   balanceChart.data.datasets[0].borderColor = currentChartMode === 'real' ? '#6c63ff' : '#fbbf24';
   balanceChart.data.datasets[0].backgroundColor = currentChartMode === 'real' ? 'rgba(108,99,255,0.08)' : 'rgba(251,191,36,0.08)';
   balanceChart.update('none');
@@ -663,9 +377,7 @@ function updateChart(balHistory) {
 
 function switchChart(mode) {
   currentChartMode = mode;
-  document.querySelectorAll('.chart-tab').forEach((t, i) => {
-    t.classList.toggle('active', (i === 0 && mode === 'real') || (i === 1 && mode === 'paper'));
-  });
+  document.querySelectorAll('.chart-tab').forEach((t, i) => t.classList.toggle('active', (i === 0 && mode === 'real') || (i === 1 && mode === 'paper')));
 }
 
 // ==================== POSITIONS ====================
@@ -681,29 +393,23 @@ function renderPositions(positions) {
     ...Object.entries(positions.real || {}).map(([mint, p]) => ({ ...p, mint, isPaper: false })),
     ...Object.entries(positions.paper || {}).map(([mint, p]) => ({ ...p, mint, isPaper: true })),
   ];
-
   document.getElementById('stat-positions').textContent = all.length;
-
-  if (all.length === 0) {
-    list.innerHTML = '<div class="empty-state">No open positions</div>';
-    return;
-  }
-
+  if (all.length === 0) { list.innerHTML = '<div class="empty-state">No open positions</div>'; return; }
   list.innerHTML = all.map(p => {
-    const mult = p.currentPrice && p.entryPrice ? p.currentPrice / p.entryPrice : 1;
+    const mult = p.entryPrice > 0 && p.currentPrice > 0 ? p.currentPrice / p.entryPrice : 1;
     const pnl = (mult - 1) * 100;
     const isPos = pnl >= 0;
-    return `
-      <div class="position-item ${p.isPaper ? 'paper' : 'real'}">
-        <div class="pos-left">
-          <div class="pos-symbol">$${p.symbol} <span class="pos-badge ${p.isPaper ? 'paper' : 'real'}">${p.isPaper ? 'Paper' : 'Real'}</span></div>
-          <div class="pos-meta">Score: ${p.score || '—'}/10 · $${p.amountUSD} · ${Math.round((Date.now() - new Date(p.openedAt)) / 60000)}m ago</div>
-        </div>
-        <div class="pos-right">
-          <div class="pos-pnl ${isPos ? 'positive' : 'negative'}">${isPos ? '+' : ''}${pnl.toFixed(1)}%</div>
-          <div class="pos-price">${mult.toFixed(3)}x</div>
-        </div>
-      </div>`;
+    const holdMins = Math.round((Date.now() - new Date(p.openedAt)) / 60000);
+    return `<div class="position-item ${p.isPaper ? 'paper' : 'real'}">
+      <div class="pos-left">
+        <div class="pos-symbol">$${p.symbol} <span class="pos-badge ${p.isPaper ? 'paper' : 'real'}">${p.isPaper ? 'Paper' : 'Real'}</span></div>
+        <div class="pos-meta">Score: ${p.score || '—'}/10 · $${p.amountUSD} · ${holdMins}m ago</div>
+      </div>
+      <div class="pos-right">
+        <div class="pos-pnl ${isPos ? 'positive' : 'negative'}">${isPos ? '+' : ''}${pnl.toFixed(1)}%</div>
+        <div class="pos-price">${mult.toFixed(3)}x</div>
+      </div>
+    </div>`;
   }).join('');
 }
 
@@ -712,71 +418,96 @@ function renderPositions(positions) {
 async function loadHistory() {
   const data = await api('/api/history');
   if (!data) return;
-
   const wins = data.filter(t => t.pnlUSD > 0).length;
   const total = data.length;
-  const netPnl = data.reduce((sum, t) => sum + t.pnlUSD, 0);
+  const netPnl = data.reduce((sum, t) => sum + (t.pnlUSD || 0), 0);
   const best = data.reduce((max, t) => Math.max(max, t.multiplier || 1), 1);
-
   document.getElementById('hist-total').textContent = total;
   document.getElementById('hist-winrate').textContent = total > 0 ? `${((wins/total)*100).toFixed(1)}%` : '0%';
-  document.getElementById('hist-pnl').textContent = `${netPnl >= 0 ? '+' : ''}$${netPnl.toFixed(2)}`;
-  document.getElementById('hist-pnl').className = 'stat-value ' + (netPnl >= 0 ? 'green' : 'red');
+  const pnlEl = document.getElementById('hist-pnl');
+  pnlEl.textContent = `${netPnl >= 0 ? '+' : ''}$${netPnl.toFixed(2)}`;
+  pnlEl.className = 'stat-value ' + (netPnl >= 0 ? 'green' : 'red');
   document.getElementById('hist-best').textContent = `${best.toFixed(2)}x`;
-
   const list = document.getElementById('history-list');
-  if (data.length === 0) {
-    list.innerHTML = '<div class="empty-state">No trades yet</div>';
-    return;
-  }
-
+  if (data.length === 0) { list.innerHTML = '<div class="empty-state">No trades yet</div>'; return; }
   list.innerHTML = data.slice(0, 50).map(t => {
     const isWin = t.pnlUSD > 0;
-    return `
-      <div class="history-item">
-        <div class="history-left">
-          <div class="history-symbol">$${t.symbol} ${t.isPaper ? '📝' : '💰'}</div>
-          <div class="history-meta">${t.multiplier?.toFixed(2)}x · ${t.duration}m · ${new Date(t.closedAt).toLocaleDateString()}</div>
-        </div>
-        <div class="history-right">
-          <div class="history-pnl" style="color:${isWin ? 'var(--accent2)' : 'var(--red)'}">${isWin ? '+' : ''}$${t.pnlUSD?.toFixed(2)}</div>
-          <div class="history-reason">${t.reason}</div>
-        </div>
-      </div>`;
+    return `<div class="history-item">
+      <div class="history-left">
+        <div class="history-symbol">$${t.symbol} ${t.isPaper ? '📝' : '💰'}</div>
+        <div class="history-meta">${(t.multiplier || 1).toFixed(2)}x · ${t.duration}m · ${new Date(t.closedAt).toLocaleDateString()}</div>
+      </div>
+      <div class="history-right">
+        <div class="history-pnl" style="color:${isWin ? 'var(--accent2)' : 'var(--red)'}">${isWin ? '+' : ''}$${(t.pnlUSD || 0).toFixed(2)}</div>
+        <div class="history-reason">${t.reason}</div>
+      </div>
+    </div>`;
   }).join('');
 }
 
+async function clearHistory() {
+  if (!confirm('Clear all trade history? This cannot be undone.')) return;
+  await api('/api/history/clear', 'POST');
+  await loadHistory();
+  addFeedItem('🗑️ Trade history cleared', 'open');
+}
+
 // ==================== SETTINGS ====================
+
+function renderTPs(mode, tps) {
+  const container = document.getElementById(`${mode}-tps`);
+  container.innerHTML = '';
+  (tps || []).forEach((tp, i) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:center';
+    row.innerHTML = `
+      <input class="setting-input" type="number" placeholder="Growth %" value="${tp.percent}" id="${mode}-tp-percent-${i}" style="flex:1" />
+      <span style="color:var(--text2);font-size:13px">% →</span>
+      <input class="setting-input" type="number" placeholder="Sell %" value="${tp.sellPercent}" id="${mode}-tp-sell-${i}" style="flex:1" />
+      <span style="color:var(--text2);font-size:13px">%</span>
+      <button onclick="removeTP('${mode}',${i})" style="background:var(--red);color:white;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px">✕</button>
+    `;
+    container.appendChild(row);
+  });
+  if (!tps || tps.length === 0) container.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:4px 0">No TPs — trailing stop only</div>';
+}
+
+function addTP(mode) { const tps = getTPs(mode); tps.push({ percent: 25, sellPercent: 100 }); renderTPs(mode, tps); }
+function removeTP(mode, i) { const tps = getTPs(mode); tps.splice(i, 1); renderTPs(mode, tps); }
+
+function getTPs(mode) {
+  const tps = []; let i = 0;
+  while (document.getElementById(`${mode}-tp-percent-${i}`)) {
+    tps.push({ percent: parseFloat(document.getElementById(`${mode}-tp-percent-${i}`).value) || 25, sellPercent: parseFloat(document.getElementById(`${mode}-tp-sell-${i}`).value) || 100 });
+    i++;
+  }
+  return tps;
+}
 
 async function loadSettings() {
   const data = await api('/api/settings');
   if (!data) return;
   settingsState = data;
-
   ['real', 'paper'].forEach(mode => {
     const s = data[mode];
     const toggle = document.getElementById(`${mode}-toggle`);
-    toggle.className = 'toggle' + (s.enabled ? ' on' : '');
-
+    if (toggle) toggle.className = 'toggle' + (s.enabled ? ' on' : '');
     ['betSize', 'maxSlots', 'minLiquidity', 'minScore', 'maxAgeMins', 'maxHoldMins', 'stopLossPercent', 'trailingStopPercent'].forEach(key => {
       const el = document.getElementById(`${mode}-${key}`);
       if (el) el.value = s[key];
     });
-
     if (mode === 'paper') {
       const balEl = document.getElementById('paper-balance');
       if (balEl) balEl.value = s.balance;
     }
-
-    // Render TPs
-    renderTPs(mode, s.takeProfits || [{ percent: s.takeProfitPercent || 55, sellPercent: 100 }]);
+    renderTPs(mode, s.takeProfits || [{ percent: 25, sellPercent: 100 }]);
   });
 }
 
 function toggleSetting(mode) {
   settingsState[mode].enabled = !settingsState[mode].enabled;
   const toggle = document.getElementById(`${mode}-toggle`);
-  toggle.className = 'toggle' + (settingsState[mode].enabled ? ' on' : '');
+  if (toggle) toggle.className = 'toggle' + (settingsState[mode].enabled ? ' on' : '');
 }
 
 async function saveSettings() {
@@ -786,14 +517,10 @@ async function saveSettings() {
       const el = document.getElementById(`${mode}-${key}`);
       if (el) s[key] = parseFloat(el.value) || s[key];
     });
-    if (mode === 'paper') {
-      const balEl = document.getElementById('paper-balance');
-      if (balEl) s.balance = parseFloat(balEl.value) || s.balance;
-    }
-    // Save TPs
     s.takeProfits = getTPs(mode);
+    // Never send balance — it's managed by the server
+    delete s.balanceInput;
   });
-
   await api('/api/settings', 'POST', settingsState);
   const msg = document.getElementById('save-success');
   msg.style.display = 'block';
@@ -801,7 +528,7 @@ async function saveSettings() {
 }
 
 async function resetPaper() {
-  const amount = parseFloat(document.getElementById('paper-balance').value) || 100;
+  const amount = parseFloat(prompt('Reset paper balance to how much?', '100')) || 100;
   await api('/api/paper/reset', 'POST', { amount });
   await loadStatus();
   addFeedItem(`📝 Paper balance reset to $${amount}`, 'open');
@@ -813,34 +540,24 @@ function addFeedItem(message, type = '') {
   const feed = document.getElementById('live-feed');
   const empty = feed.querySelector('.empty-state');
   if (empty) empty.remove();
-
   const item = document.createElement('div');
   item.className = `feed-item ${type}`;
   item.innerHTML = `${message}<div class="feed-time">${new Date().toLocaleTimeString()}</div>`;
   feed.insertBefore(item, feed.firstChild);
-
-  // Keep max 20 items
   while (feed.children.length > 20) feed.removeChild(feed.lastChild);
 }
 
 // ==================== TABS ====================
 
 function showTab(name) {
-  document.querySelectorAll('.tab').forEach((t, i) => {
-    t.classList.toggle('active', ['dashboard','positions','history','settings'][i] === name);
-  });
-  document.querySelectorAll('.tab-content').forEach(c => {
-    c.classList.toggle('active', c.id === `tab-${name}`);
-  });
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', ['dashboard','positions','history','settings'][i] === name));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === `tab-${name}`));
   if (name === 'history') loadHistory();
   if (name === 'positions') loadPositions();
+  if (name === 'settings') loadSettings();
 }
 
-// ==================== AUTO INIT ====================
-
-if (token) {
-  showApp();
-} 
+if (token) showApp();
 </script>
 </body>
 </html>

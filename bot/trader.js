@@ -15,66 +15,50 @@ const RPC_ENDPOINTS = [
 let currentRpcIndex = 0;
 
 function createConnection(url) {
-  return new Connection(url, {
-    commitment: 'confirmed',
-    confirmTransactionInitialTimeout: 60000,
-    wsEndpoint: undefined, // Disable WebSocket to avoid fetch issues
-  });
-}
-
-function rotateRpc() {
-  currentRpcIndex = (currentRpcIndex + 1) % RPC_ENDPOINTS.length;
-  const url = RPC_ENDPOINTS[currentRpcIndex];
-  connection = createConnection(url);
-  console.log(`🔄 Switched RPC to: ${url.slice(0, 40)}...`);
-  return connection;
+  return new Connection(url, { commitment: 'confirmed' });
 }
 
 function init() {
-  const rpcUrl = RPC_ENDPOINTS[0];
-  connection = createConnection(rpcUrl);
+  connection = createConnection(RPC_ENDPOINTS[0]);
 
   const privateKey = process.env.WALLET_PRIVATE_KEY;
   if (!privateKey) throw new Error('WALLET_PRIVATE_KEY not set');
 
-  const decoded = bs58.decode(privateKey);
-  wallet = Keypair.fromSecretKey(new Uint8Array(decoded));
+  let decoded;
+  try {
+    decoded = bs58.decode(privateKey);
+  } catch {
+    const b = require('bs58');
+    decoded = b.default ? b.default.decode(privateKey) : b.decode(privateKey);
+  }
 
+  wallet = Keypair.fromSecretKey(new Uint8Array(decoded));
   console.log(`✅ Wallet: ${wallet.publicKey.toString()}`);
-  console.log(`🌐 RPC: ${rpcUrl.slice(0, 40)}...`);
+  console.log(`🌐 RPC: ${RPC_ENDPOINTS[0]?.slice(0, 50)}...`);
   return { connection, wallet };
 }
 
 function getConnection() { return connection; }
 function getWallet() { return wallet; }
 
+async function rpcCall(method, params) {
+  const url = RPC_ENDPOINTS[currentRpcIndex] || 'https://api.mainnet-beta.solana.com';
+  const res = await axios.post(url, {
+    jsonrpc: '2.0', id: 1, method, params
+  }, { headers: { 'Content-Type': 'application/json' }, timeout: 30000 });
+  if (res.data?.error) throw new Error(res.data.error.message);
+  return res.data?.result;
+}
+
 async function getSOLBalance() {
   try {
-    const response = await axios.post(
-      RPC_ENDPOINTS[currentRpcIndex] || 'https://api.mainnet-beta.solana.com',
-      {
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'getBalance',
-        params: [wallet.publicKey.toString()]
-      },
-      { headers: { 'Content-Type': 'application/json' }, timeout: 10000 }
-    );
-    const lamports = response.data?.result?.value || 0;
-    return lamports / 1e9;
+    if (!wallet) return 0;
+    const result = await rpcCall('getBalance', [wallet.publicKey.toString()]);
+    return (result?.value || 0) / 1e9;
   } catch (e) {
     console.error('Balance error:', e.message);
     return 0;
   }
-}
-
-async function rpcCall(method, params) {
-  const url = RPC_ENDPOINTS[currentRpcIndex] || 'https://api.mainnet-beta.solana.com';
-  const response = await axios.post(url, {
-    jsonrpc: '2.0', id: 1, method, params
-  }, { headers: { 'Content-Type': 'application/json' }, timeout: 30000 });
-  if (response.data?.error) throw new Error(response.data.error.message);
-  return response.data?.result;
 }
 
 async function sendRawTransactionHttp(serializedTx) {
@@ -101,16 +85,15 @@ async function confirmTransactionHttp(txid, maxWaitMs = 30000) {
     } catch {}
     await new Promise(r => setTimeout(r, 2000));
   }
-  throw new Error('Transaction confirmation timeout');
+  throw new Error('Confirmation timeout');
 }
 
 async function executeTrade(action, mintAddress, amountSOL) {
-  const maxRetries = 3;
-  for (let i = 0; i < maxRetries; i++) {
+  for (let i = 0; i < 3; i++) {
     try {
       console.log(`💱 ${action.toUpperCase()} ${mintAddress.slice(0, 8)}... ${amountSOL} SOL (attempt ${i + 1})`);
 
-      const response = await axios.post(
+      const res = await axios.post(
         'https://pumpportal.fun/api/trade-local',
         {
           publicKey: wallet.publicKey.toString(),
@@ -122,16 +105,12 @@ async function executeTrade(action, mintAddress, amountSOL) {
           priorityFee: 0.0005,
           pool: 'auto',
         },
-        {
-          headers: { 'Content-Type': 'application/json' },
-          responseType: 'arraybuffer',
-          timeout: 15000,
-        }
+        { headers: { 'Content-Type': 'application/json' }, responseType: 'arraybuffer', timeout: 15000 }
       );
 
-      if (response.status !== 200) throw new Error(`PumpPortal error: ${response.status}`);
+      if (res.status !== 200) throw new Error(`PumpPortal error: ${res.status}`);
 
-      const txBuffer = Buffer.from(response.data);
+      const txBuffer = Buffer.from(res.data);
       let transaction;
       try {
         transaction = VersionedTransaction.deserialize(txBuffer);
@@ -146,13 +125,12 @@ async function executeTrade(action, mintAddress, amountSOL) {
       );
 
       await confirmTransactionHttp(txid);
-
       console.log(`✅ ${action} confirmed: ${txid}`);
       return { success: true, txid };
 
     } catch (e) {
       console.error(`Trade attempt ${i + 1} failed: ${e.message}`);
-      if (i < maxRetries - 1) await new Promise(r => setTimeout(r, 2000 * (i + 1)));
+      if (i < 2) await new Promise(r => setTimeout(r, 2000 * (i + 1)));
     }
   }
   return { success: false, error: 'All retries failed' };
@@ -164,8 +142,6 @@ async function buyToken(mintAddress, amountUSD, solPrice) {
 }
 
 async function sellToken(mintAddress, percentToSell) {
-  // Use a tiny amount for sells since PumpPortal handles percentage internally
-  // We sell by sending the full position using 'sell' action
   return executeTrade('sell', mintAddress, percentToSell / 100);
 }
 

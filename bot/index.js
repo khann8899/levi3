@@ -10,10 +10,9 @@ let monitorInterval = null;
 
 async function scanAndTrade() {
   const settings = getSettings();
-  const realEnabled = settings.real.enabled;
   const paperEnabled = settings.paper.enabled;
-
-  if (!realEnabled && !paperEnabled) return;
+  const realEnabled = settings.real.enabled;
+  if (!paperEnabled && !realEnabled) return;
 
   const maxAge = Math.max(
     realEnabled ? settings.real.maxAgeMins : 0,
@@ -22,29 +21,22 @@ async function scanAndTrade() {
 
   try {
     const solPrice = await getSOLPrice();
-    const newTokens = await fetchNewTokens(maxAge);
+    const coins = await fetchNewTokens(maxAge);
     const connection = getConnection();
 
-    for (const coin of newTokens) {
-      // Check real mode
-      if (realEnabled) {
-        const analysis = await analyzeCoin(coin, settings.real, connection);
-        if (analysis.passes) {
-          const enrichedCoin = analysis.coin || coin;
-          await openPosition(enrichedCoin, analysis, false, solPrice);
-        }
-      }
-
-      // Check paper mode
+    for (const coin of coins) {
       if (paperEnabled) {
         const analysis = await analyzeCoin(coin, settings.paper, connection);
         if (analysis.passes) {
-          const enrichedCoin = analysis.coin || coin;
-          await openPosition(enrichedCoin, analysis, true, solPrice);
+          await openPosition(analysis.coin || coin, analysis, true, solPrice);
         }
       }
-
-      // Small delay between coins to avoid rate limiting
+      if (realEnabled) {
+        const analysis = await analyzeCoin(coin, settings.real, connection);
+        if (analysis.passes) {
+          await openPosition(analysis.coin || coin, analysis, false, solPrice);
+        }
+      }
       await new Promise(r => setTimeout(r, 200));
     }
   } catch (e) {
@@ -54,21 +46,13 @@ async function scanAndTrade() {
 
 function start() {
   if (isRunning) return;
-
   try {
     init();
     isRunning = true;
-
-    // Scan every 30 seconds
     scanInterval = setInterval(scanAndTrade, 30000);
-
-    // Monitor positions every 20 seconds
     monitorInterval = setInterval(monitorPositions, 20000);
-
-    // Initial run
     scanAndTrade();
     monitorPositions();
-
     console.log('🚀 Levi 3 bot started!');
   } catch (e) {
     console.error('Bot start error:', e.message);
